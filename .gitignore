@@ -39,3 +39,21 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# local databases
+*.db
+*.sqlite
+test_audio.raw
+
+# IDEs
+.vscode/
+.idea/
+
+# Scratch/Log Files
+api_error.json
+_review_*.txt
+
+# Agent/BMAD (if pushing from project root)
+.agent/
+_bmad/
+_bmad-output/

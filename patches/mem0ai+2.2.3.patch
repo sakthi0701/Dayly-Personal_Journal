@@ -1,0 +1,114 @@
+diff --git a/node_modules/mem0ai/dist/oss/index.js b/node_modules/mem0ai/dist/oss/index.js
+index d23ec7c..a22438f 100644
+--- a/node_modules/mem0ai/dist/oss/index.js
++++ b/node_modules/mem0ai/dist/oss/index.js
+@@ -1839,6 +1839,7 @@ var SupabaseDB = class {
+   constructor(config) {
+     this.client = (0, import_supabase_js.createClient)(config.supabaseUrl, config.supabaseKey);
+     this.tableName = config.tableName;
++    this.dimension = config.dimension || 1536;
+     this.embeddingColumnName = config.embeddingColumnName || "embedding";
+     this.metadataColumnName = config.metadataColumnName || "metadata";
+     this.initialize().catch((err) => {
+@@ -1848,7 +1849,7 @@ var SupabaseDB = class {
+   }
+   async initialize() {
+     try {
+-      const testVector = Array(1536).fill(0);
++      const testVector = Array(this.dimension).fill(0);
+       try {
+         await this.client.from(this.tableName).delete().eq("id", "test_vector");
+       } catch (e) {
+@@ -1874,7 +1875,7 @@ create extension if not exists vector;
+ -- Create the memories table
+ create table if not exists memories (
+   id text primary key,
+-  embedding vector(1536),
++  embedding vector(),
+   metadata jsonb,
+   created_at timestamp with time zone default timezone('utc', now()),
+   updated_at timestamp with time zone default timezone('utc', now())
+@@ -1888,7 +1889,7 @@ create table if not exists memory_migrations (
+ 
+ -- Create the vector similarity search function
+ create or replace function match_vectors(
+-  query_embedding vector(1536),
++  query_embedding vector(),
+   match_count int,
+   filter jsonb default '{}'::jsonb
+ )
+@@ -3687,7 +3688,7 @@ var DEFAULT_MEMORY_CONFIG = {
+     provider: "memory",
+     config: {
+       collectionName: "memories",
+-      dimension: 1536
++      dimension: this.dimension
+     }
+   },
+   llm: {
+diff --git a/node_modules/mem0ai/dist/oss/index.mjs b/node_modules/mem0ai/dist/oss/index.mjs
+index 5b7f57a..1109644 100644
+--- a/node_modules/mem0ai/dist/oss/index.mjs
++++ b/node_modules/mem0ai/dist/oss/index.mjs
+@@ -720,7 +720,7 @@ var Qdrant = class {
+   generateUUID() {
+     return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(
+       /[xy]/g,
+-      function(c) {
++      function (c) {
+         const r = Math.random() * 16 | 0;
+         const v = c === "x" ? r : r & 3 | 8;
+         return v.toString(16);
+@@ -1027,7 +1027,7 @@ var VectorizeDB = class {
+   generateUUID() {
+     return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(
+       /[xy]/g,
+-      function(c) {
++      function (c) {
+         const r = Math.random() * 16 | 0;
+         const v = c === "x" ? r : r & 3 | 8;
+         return v.toString(16);
+@@ -1778,6 +1778,7 @@ var SupabaseDB = class {
+   constructor(config) {
+     this.client = createClient2(config.supabaseUrl, config.supabaseKey);
+     this.tableName = config.tableName;
++    this.dimension = config.dimension || 1536;
+     this.embeddingColumnName = config.embeddingColumnName || "embedding";
+     this.metadataColumnName = config.metadataColumnName || "metadata";
+     this.initialize().catch((err) => {
+@@ -1787,7 +1788,7 @@ var SupabaseDB = class {
+   }
+   async initialize() {
+     try {
+-      const testVector = Array(1536).fill(0);
++      const testVector = Array(this.dimension).fill(0);
+       try {
+         await this.client.from(this.tableName).delete().eq("id", "test_vector");
+       } catch (e) {
+@@ -1813,7 +1814,7 @@ create extension if not exists vector;
+ -- Create the memories table
+ create table if not exists memories (
+   id text primary key,
+-  embedding vector(1536),
++  embedding vector(${this.dimension}),
+   metadata jsonb,
+   created_at timestamp with time zone default timezone('utc', now()),
+   updated_at timestamp with time zone default timezone('utc', now())
+@@ -1827,7 +1828,7 @@ create table if not exists memory_migrations (
+ 
+ -- Create the vector similarity search function
+ create or replace function match_vectors(
+-  query_embedding vector(1536),
++  query_embedding vector(${this.dimension}),
+   match_count int,
+   filter jsonb default '{}'::jsonb
+ )
+@@ -3417,7 +3418,7 @@ var AzureAISearch = class {
+   generateUUID() {
+     return "xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx".replace(
+       /[xy]/g,
+-      function(c) {
++      function (c) {
+         const r = Math.random() * 16 | 0;
+         const v = c === "x" ? r : r & 3 | 8;
+         return v.toString(16);
