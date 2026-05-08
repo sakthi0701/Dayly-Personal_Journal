@@ -12,7 +12,7 @@ import org.json.JSONException
 class HabitsWidget : AppWidgetProvider() {
 
     companion object {
-        private const val PREFS_FILE = "_capacitor_storage_plugin"
+        private const val PREFS_FILE = "DaylyCache"
         private const val KEY_HABITS = "widget_habits"
     }
 

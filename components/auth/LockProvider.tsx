@@ -9,12 +9,16 @@ export default function LockProvider({ children }: { children: React.ReactNode }
 
     useEffect(() => {
         setIsMounted(true);
-        const pinHash = localStorage.getItem('dayly_pin_hash');
-        // If a PIN is configured, lock the app by default.
-        if (pinHash) {
+        const sessionUnlocked = sessionStorage.getItem('dayly_session_unlocked');
+        if (!sessionUnlocked) {
             setIsLocked(true);
         }
     }, []);
+
+    const handleUnlock = () => {
+        sessionStorage.setItem('dayly_session_unlocked', 'true');
+        setIsLocked(false);
+    };
 
     // Prevent hydration mismatch and content flash by not rendering anything until client checks storage
     if (!isMounted) {
@@ -26,7 +30,7 @@ export default function LockProvider({ children }: { children: React.ReactNode }
     }
 
     if (isLocked) {
-        return <LockScreen onUnlock={() => setIsLocked(false)} />;
+        return <LockScreen onUnlock={handleUnlock} />;
     }
 
     return <>{children}</>;

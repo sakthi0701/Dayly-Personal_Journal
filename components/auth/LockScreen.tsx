@@ -24,15 +24,15 @@ export default function LockScreen({ onUnlock }: LockScreenProps) {
         e.preventDefault();
         setError('');
 
-        const storedHash = localStorage.getItem('dayly_pin_hash');
-        if (!storedHash) {
-            // Failsafe: if no PIN is configured but we are here, just unlock.
-            onUnlock();
-            return;
+        let targetHash = localStorage.getItem('dayly_pin_hash');
+        
+        // If no PIN is configured locally, default to master PIN for web security
+        if (!targetHash) {
+            targetHash = await hashString(process.env.NEXT_PUBLIC_MASTER_PIN || '0701');
         }
 
         const inputHash = await hashString(pin);
-        if (inputHash === storedHash) {
+        if (inputHash === targetHash) {
             onUnlock();
         } else {
             setError('Incorrect PIN. Please try again.');
