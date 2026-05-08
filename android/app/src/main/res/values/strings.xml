@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Dayly</string>
+    <string name="title_activity_main">Dayly</string>
+    <string name="package_name">com.dayly.app</string>
+    <string name="custom_url_scheme">com.dayly.app</string>
+</resources>

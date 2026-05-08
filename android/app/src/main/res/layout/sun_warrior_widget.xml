@@ -1,0 +1,83 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Sun Warrior Widget Layout
+  Brand Colors:
+    Gold/Active:  #FFD700
+    Ice/Dormant:  #87CEEB
+    Background:   #0D0D1A (dark navy)
+-->
+<LinearLayout
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:padding="14dp"
+    android:gravity="center_horizontal"
+    android:background="@drawable/widget_background">
+
+    <!-- Avatar Icon (state-driven: sun / warm / dormant) -->
+    <ImageView
+        android:id="@+id/widget_avatar_icon"
+        android:layout_width="40dp"
+        android:layout_height="40dp"
+        android:src="@drawable/ic_sun_warrior_sun"
+        android:contentDescription="Sun Warrior avatar"
+        android:layout_marginBottom="2dp" />
+
+    <!-- State label: "Sun Warrior 🔥" / "Building..." / "Start Today" -->
+    <TextView
+        android:id="@+id/widget_state_label"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="Sun Warrior"
+        android:textColor="#FFD700"
+        android:textSize="9sp"
+        android:fontFamily="sans-serif-medium"
+        android:letterSpacing="0.08"
+        android:layout_marginBottom="0dp" />
+
+    <!-- Large streak number -->
+    <TextView
+        android:id="@+id/widget_streak_number"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="0"
+        android:textColor="#FFFFFF"
+        android:textSize="44sp"
+        android:fontFamily="sans-serif-black"
+        android:includeFontPadding="false"
+        android:lineSpacingExtra="-6dp" />
+
+    <!-- "day streak" subtitle -->
+    <TextView
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="day streak"
+        android:textColor="#87CEEB"
+        android:textSize="9sp"
+        android:fontFamily="sans-serif"
+        android:layout_marginBottom="8dp" />
+
+    <!-- XP Progress Bar -->
+    <ProgressBar
+        android:id="@+id/widget_xp_progress"
+        style="?android:attr/progressBarStyleHorizontal"
+        android:layout_width="match_parent"
+        android:layout_height="5dp"
+        android:max="100"
+        android:progress="0"
+        android:progressTint="#FFD700"
+        android:progressBackgroundTint="#1A2040"
+        android:layout_marginBottom="3dp" />
+
+    <!-- XP value text -->
+    <TextView
+        android:id="@+id/widget_xp_text"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:text="XP 0"
+        android:textColor="#87CEEB"
+        android:textSize="8sp"
+        android:fontFamily="sans-serif" />
+
+</LinearLayout>

@@ -52,8 +52,15 @@ test_audio.raw
 # Scratch/Log Files
 api_error.json
 _review_*.txt
+*.webp
+*.mp4
+*.raw
 
 # Agent/BMAD (if pushing from project root)
 .agent/
+.gemini/
 _bmad/
 _bmad-output/
+*.log
+
+.vercel

@@ -122,24 +122,64 @@ export function calculateXP(isNewStreakDay: boolean, isContinuedStreak: boolean)
 }
 
 /**
- * Determine the user level based on XP formula
+ * Determine the user level based on an exponential XP curve.
+ * Levels increase in cost to reward sustained engagement.
  */
+export const LEVEL_THRESHOLDS = [
+  { level: 1, title: 'Novice',      xp: 0 },
+  { level: 2, title: 'Apprentice',  xp: 300 },
+  { level: 3, title: 'Seeker',      xp: 750 },
+  { level: 4, title: 'Voyager',     xp: 1500 },
+  { level: 5, title: 'Adept',       xp: 3000 },
+  { level: 6, title: 'Scholar',     xp: 6000 },
+  { level: 7, title: 'Sage',        xp: 12000 },
+  { level: 8, title: 'Master',      xp: 25000 },
+];
+
 export function calculateLevel(xp: number) {
-    const levelThreshold = 300;
-    const level = Math.floor(xp / levelThreshold) + 1;
-    let title = "Novice";
+  let currentTier = LEVEL_THRESHOLDS[0];
+  let nextTier = LEVEL_THRESHOLDS[1];
 
-    if (level >= 5) title = "Sage";
-    else if (level >= 4) title = "Master";
-    else if (level >= 3) title = "Journeyman";
-    else if (level >= 2) title = "Apprentice";
+  for (let i = LEVEL_THRESHOLDS.length - 1; i >= 0; i--) {
+    if (xp >= LEVEL_THRESHOLDS[i].xp) {
+      currentTier = LEVEL_THRESHOLDS[i];
+      nextTier = LEVEL_THRESHOLDS[i + 1] ?? LEVEL_THRESHOLDS[LEVEL_THRESHOLDS.length - 1];
+      break;
+    }
+  }
 
-    const nextLevelXp = level * levelThreshold;
-    const progressToNext = xp - ((level - 1) * levelThreshold);
-    const progressPercent = Math.min(100, Math.max(0, (progressToNext / levelThreshold) * 100));
+  const tierRange = nextTier.xp - currentTier.xp;
+  const progressToNext = xp - currentTier.xp;
+  const progressPercent = tierRange > 0
+    ? Math.min(100, Math.max(0, (progressToNext / tierRange) * 100))
+    : 100;
 
-    return { level, title, currentTierXp: progressToNext, nextLevelXp: levelThreshold, progressPercent };
+  return {
+    level: currentTier.level,
+    title: currentTier.title,
+    currentTierXp: progressToNext,
+    nextLevelXp: tierRange > 0 ? tierRange : nextTier.xp - currentTier.xp,
+    progressPercent,
+    nextTitle: nextTier.title,
+  };
 }
+
+/**
+ * Directly add XP to the user's stats. Used by Pomodoro completion and task done.
+ */
+export async function addXP(amount: number): Promise<void> {
+  try {
+    const stats = await getUserStats();
+    if (!stats) return;
+    await supabase
+      .from('user_stats')
+      .update({ xp: stats.xp + amount, updated_at: new Date().toISOString() })
+      .eq('id', stats.id);
+  } catch (err) {
+    console.error('[addXP] failed:', err);
+  }
+}
+
 
 export async function updateUserStatsOnEntry(clientTimezone: string = 'UTC') {
     let stats = await getUserStats();

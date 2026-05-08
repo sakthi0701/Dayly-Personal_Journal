@@ -127,7 +127,7 @@ export default function LockScreen({ onUnlock }: LockScreenProps) {
                             <path d="M7 11V7a5 5 0 0 1 10 0v4" />
                         </svg>
                     </div>
-                    <h1 className="text-3xl font-bold tracking-tight text-white mb-8">Journal Locked</h1>
+                    <h1 className="text-3xl font-bold tracking-tight text-white mb-8">Dayly Locked</h1>
                 </div>
 
                 <form onSubmit={handlePinSubmit} className="w-full space-y-6 flex flex-col items-center">
