@@ -203,3 +203,62 @@ export async function removeFromOfflineQueue(id: string): Promise<void> {
   const queue = (entry?.data ?? []).filter((e) => e.id !== id);
   await _set(CACHE_KEYS.PENDING_ENTRIES, queue);
 }
+
+// ─── ANDROID HOME SCREEN WIDGET SYNC ──────────────────────────────────────────
+
+/**
+ * Syncs specific datasets (Tasks, Habits, Goals) into flat JSON strings
+ * inside Preferences so the native Android widgets can parse them easily.
+ */
+export async function syncWidgetsToNative(
+  tasks: Array<{ title: string; progress: number }>,
+  habits: Array<{ title: string }>,
+  goals: Array<{ title: string; icon: string; progress: number }>
+): Promise<void> {
+  try {
+    await Preferences.set({ key: 'widget_tasks', value: JSON.stringify(tasks) });
+    await Preferences.set({ key: 'widget_habits', value: JSON.stringify(habits) });
+    await Preferences.set({ key: 'widget_goals', value: JSON.stringify(goals) });
+
+    if (typeof window !== 'undefined' && (window as any).Capacitor?.isNativePlatform()) {
+      // Native widget handles its own update schedules, but data is now ready.
+    }
+  } catch (e) {
+    console.error('[WidgetSync] Failed to sync widgets to native preferences', e);
+  }
+}
+
+/**
+ * Fetches the latest data from the API and pushes it to the native Android widgets.
+ * Call this function whenever tasks, habits, or goals change.
+ */
+export async function triggerWidgetDataSync(): Promise<void> {
+  if (typeof window === 'undefined') return; // Client only
+  
+  try {
+    const [tasksRes, habitsRes, goalsRes] = await Promise.all([
+      fetch('/api/tasks?status=todo').then(r => r.json()).catch(() => ({ tasks: [] })),
+      fetch('/api/habits').then(r => r.json()).catch(() => ({ habits: [] })),
+      fetch('/api/goals').then(r => r.json()).catch(() => ({ goals: [] }))
+    ]);
+
+    const tasks = (tasksRes.tasks ?? []).slice(0, 5).map((t: any) => ({
+      title: t.title,
+      progress: t.status === 'in-progress' ? 50 : 0
+    }));
+
+    const habits = (habitsRes.habits ?? []).slice(0, 3).map((h: any) => ({
+      title: h.name
+    }));
+
+    const goals = (goalsRes.goals ?? []).filter((g: any) => g.status === 'active').slice(0, 3).map((g: any) => ({
+      title: g.title,
+      icon: g.icon || '💻',
+      progress: Math.min(100, Math.round(((g.current_value || 0) / (g.target_value || 1)) * 100))
+    }));
+
+    await syncWidgetsToNative(tasks, habits, goals);
+  } catch (e) {
+    console.error('[WidgetSync] Data fetch failed', e);
+  }
+}

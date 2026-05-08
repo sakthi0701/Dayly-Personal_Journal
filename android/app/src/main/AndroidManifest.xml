@@ -68,6 +68,45 @@
                 android:resource="@xml/sun_warrior_widget_info" />
         </receiver>
 
+        <!-- ─── TASKS WIDGET ─────────────────────────────────────────────── -->
+        <receiver
+            android:name=".TasksWidget"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+                <action android:name="com.dayly.WIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/tasks_widget_info" />
+        </receiver>
+
+        <!-- ─── HABITS WIDGET ────────────────────────────────────────────── -->
+        <receiver
+            android:name=".HabitsWidget"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+                <action android:name="com.dayly.WIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/habits_widget_info" />
+        </receiver>
+
+        <!-- ─── GOALS WIDGET ─────────────────────────────────────────────── -->
+        <receiver
+            android:name=".GoalsWidget"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+                <action android:name="com.dayly.WIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/goals_widget_info" />
+        </receiver>
+
         <!-- Reschedule notifications after device reboot -->
         <receiver
             android:name=".BootReceiver"

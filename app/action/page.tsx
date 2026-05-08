@@ -8,6 +8,7 @@ import TaskForm from '@/components/tasks/TaskForm';
 import GoalCountdownWidget from '@/components/goals/GoalCountdownWidget';
 import HabitTracker from '@/components/analytics/HabitTracker';
 import type { Task } from '@/components/tasks/TaskCard';
+import { triggerWidgetDataSync } from '@/lib/cache';
 
 type FilterStatus = 'all' | 'todo' | 'in-progress' | 'done';
 type Segment = 'tasks' | 'goals-habits';
@@ -75,6 +76,8 @@ export default function ActionPage() {
         streak: userStats.stats?.streak_days ?? 0,
         xp: userStats.stats?.xp ?? 0,
       });
+      // Push fresh data to Android widgets
+      triggerWidgetDataSync();
     });
   }, [statsTrigger]);
 

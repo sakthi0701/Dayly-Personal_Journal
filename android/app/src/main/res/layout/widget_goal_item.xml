@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:orientation="vertical"
+    android:paddingVertical="8dp">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical"
+        android:layout_marginBottom="4dp">
+
+        <!-- Emoji Icon -->
+        <TextView
+            android:id="@+id/goal_icon"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="💻"
+            android:textSize="16sp"
+            android:layout_marginEnd="8dp" />
+
+        <TextView
+            android:id="@+id/goal_title"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="Learning Goal"
+            android:textColor="#E0E0E0"
+            android:textSize="14sp" />
+        
+        <TextView
+            android:id="@+id/goal_progress_text"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="50%"
+            android:textColor="#FFD700"
+            android:textSize="12sp" />
+    </LinearLayout>
+
+    <ProgressBar
+        android:id="@+id/goal_progress_bar"
+        style="?android:attr/progressBarStyleHorizontal"
+        android:layout_width="match_parent"
+        android:layout_height="4dp"
+        android:progressDrawable="@drawable/widget_horizontal_progress"
+        android:progress="50"
+        android:max="100" />
+</LinearLayout>
