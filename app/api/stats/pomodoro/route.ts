@@ -70,8 +70,17 @@ export async function GET() {
         created_at: b.created_at,
       }));
 
+    // Today's focus (local date)
+    const todayStart = new Date();
+    todayStart.setHours(0, 0, 0, 0);
+    const todayBlocks = completedBlocks.filter((b) => new Date(b.created_at) >= todayStart);
+    const todayFocusMinutes = Math.round(todayBlocks.reduce((acc, b) => acc + (b.duration ?? 0), 0) / 60);
+    const todayPomodoros = todayBlocks.filter((b) => b.mode === 'pomodoro').length;
+
     return NextResponse.json({
       totalFocusMinutes,
+      todayFocusMinutes,
+      todayPomodoros,
       weeklyBreakdown,
       dailyTimeline,
       strictMode: { total: strictTotal, passed: strictPassed, failed: strictFailed },

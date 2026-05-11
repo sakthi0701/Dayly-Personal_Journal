@@ -46,15 +46,10 @@ export default function PiPTimerContent({ onClose }: PiPTimerContentProps) {
     // Keep PiP open for the next session
   }, [completeTimer, startTimer, state.task, state.strictMode]);
 
-  const handleBreakExtend = useCallback(async () => {
-    const task = state.task;
-    const strict = state.strictMode;
-    await completeTimer();
-    setTimeout(() => {
-      startTimer(task, strict);
-      setTimeout(() => extendTimer(1), 50);
-    }, 50);
-  }, [completeTimer, startTimer, extendTimer, state.task, state.strictMode]);
+  const handleBreakExtend = useCallback(() => {
+    extendTimer(1);
+    // Keep PiP open — the reducer transitions status to 'running' atomically
+  }, [extendTimer]);
 
   // ── Completed / Break Prompt ──────────────────────────────────────────────
   if (isCompleted) {

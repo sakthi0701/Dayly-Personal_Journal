@@ -42,7 +42,7 @@ type TimerAction =
   | { type: 'ABANDON' }
   | { type: 'SET_MODE'; mode: TimerMode }
   | { type: 'SET_DURATION'; minutes: number }
-  | { type: 'EXTEND_DURATION'; seconds: number }
+  | { type: 'EXTEND_DURATION'; seconds: number; now: number }
   | { type: 'RESTORE'; state: TimerState };
 
 // ─── Default State ────────────────────────────────────────────────────────────
@@ -95,9 +95,22 @@ function timerReducer(state: TimerState, action: TimerAction): TimerState {
       return { ...defaultState, mode: action.mode, duration: action.mode === 'pomodoro' ? state.duration : 0 };
     case 'SET_DURATION':
       return { ...state, duration: action.minutes * 60 };
-    case 'EXTEND_DURATION':
-      // Add seconds to duration — effectively extends the current session
-      return { ...state, duration: state.duration + action.seconds, status: 'running' };
+    case 'EXTEND_DURATION': {
+      // If extending from a completed session: reset elapsed, restore original duration + extension
+      // This avoids the race condition from completeTimer → startTimer (async) → extendTimer
+      if (state.status === 'completed') {
+        const baseDuration = POMODORO_DURATION; // always extend from the base 25min
+        return {
+          ...state,
+          duration: baseDuration + action.seconds,
+          elapsed: 0,
+          status: 'running',
+          lastTick: action.now,
+        };
+      }
+      // When running/paused: just add time to existing duration
+      return { ...state, duration: state.duration + action.seconds, status: 'running', lastTick: action.now };
+    }
     case 'RESTORE':
       return action.state;
     default:
@@ -248,7 +261,7 @@ export function TimerProvider({ children }: { children: ReactNode }) {
 
   const setMode = useCallback((mode: TimerMode) => dispatch({ type: 'SET_MODE', mode }), []);
   const setDuration = useCallback((minutes: number) => dispatch({ type: 'SET_DURATION', minutes }), []);
-  const extendTimer = useCallback((minutes: number) => dispatch({ type: 'EXTEND_DURATION', seconds: minutes * 60 }), []);
+  const extendTimer = useCallback((minutes: number) => dispatch({ type: 'EXTEND_DURATION', seconds: minutes * 60, now: Date.now() }), []);
 
   const remaining =
     state.mode === 'pomodoro'

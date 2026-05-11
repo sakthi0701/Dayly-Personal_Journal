@@ -149,7 +149,7 @@ export default function GlobalTimerUI() {
               <div className="text-4xl mb-4">🍅</div>
               <h2 className="text-2xl font-bold mb-2">Session Complete!</h2>
               <div className="flex flex-col gap-2 mt-6">
-                <button onClick={() => { completeTimer(); setTimeout(() => { startTimer(state.task, state.strictMode); setTimeout(() => extendTimer(1), 50); }, 50); }} className="px-6 py-3 bg-indigo-600 rounded-xl font-bold">Extend +1 min</button>
+                <button onClick={() => extendTimer(1)} className="px-6 py-3 bg-indigo-600 rounded-xl font-bold">Extend +1 min</button>
                 <button onClick={() => completeTimer()} className="px-6 py-3 bg-emerald-600 rounded-xl font-bold">Take Break</button>
                 <button onClick={() => { completeTimer(); startTimer(state.task, state.strictMode); }} className="px-6 py-3 bg-zinc-800 rounded-xl">Skip Break</button>
               </div>

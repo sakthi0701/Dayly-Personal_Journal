@@ -27,6 +27,8 @@ interface Message {
 
 interface AnalyticsData {
   totalFocusMinutes: number;
+  todayFocusMinutes: number;
+  todayPomodoros: number;
   weeklyBreakdown: { date: string; minutes: number }[];
   dailyTimeline: { hour: number; blocks: number }[];
   strictMode: { total: number; passed: number; failed: number };
@@ -208,9 +210,15 @@ export default function SenseiPage() {
         <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-3">
           <SummaryCard icon={Flame} label="Streak" value={userStats?.streak_days ? `${userStats.streak_days}d` : '—'} color="text-orange-400" />
           <SummaryCard icon={Zap} label="XP" value={userStats?.xp ? `${userStats.xp}` : '—'} color="text-amber-400" />
-          <SummaryCard icon={Clock} label="This Week" value={formatHours(thisWeekMinutes)} color={thisWeekMinutes > 0 ? 'text-indigo-400' : 'text-zinc-600'} />
+          <SummaryCard
+            icon={Clock}
+            label="Today"
+            value={analytics?.todayFocusMinutes != null ? formatHours(analytics.todayFocusMinutes) : '—'}
+            sub={analytics?.todayPomodoros ? `${analytics.todayPomodoros} 🍅` : undefined}
+            color={analytics?.todayFocusMinutes ? 'text-emerald-400' : 'text-zinc-600'}
+          />
+          <SummaryCard icon={TrendingUp} label="This Week" value={formatHours(thisWeekMinutes)} color={thisWeekMinutes > 0 ? 'text-indigo-400' : 'text-zinc-600'} />
           <SummaryCard icon={Target} label="Strict Rate" value={strictPassRate !== null ? `${strictPassRate}%` : '—'} color={strictPassRate !== null ? (strictPassRate >= 70 ? 'text-emerald-400' : 'text-amber-400') : 'text-zinc-600'} />
-          <SummaryCard icon={CheckCircle2} label="Sessions" value={String(analytics?.strictMode?.total ?? 0)} color="text-zinc-300" />
           <SummaryCard icon={AlertTriangle} label="Violations" value={String(analytics?.strictMode?.failed ?? 0)} color={(analytics?.strictMode?.failed ?? 0) > 0 ? 'text-rose-400' : 'text-zinc-600'} />
         </div>
 
@@ -468,7 +476,7 @@ export default function SenseiPage() {
 }
 
 // ── Sub-components ─────────────────────────────────────────────────────────────
-function SummaryCard({ icon: Icon, label, value, color }: { icon: React.ElementType; label: string; value: string; color: string }) {
+function SummaryCard({ icon: Icon, label, value, sub, color }: { icon: React.ElementType; label: string; value: string; sub?: string; color: string }) {
   return (
     <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-4">
       <div className="flex items-center gap-1.5 mb-2">
@@ -476,6 +484,7 @@ function SummaryCard({ icon: Icon, label, value, color }: { icon: React.ElementT
         <span className="text-[10px] text-zinc-600 uppercase tracking-wider font-medium">{label}</span>
       </div>
       <p className={`text-2xl font-bold ${color}`}>{value}</p>
+      {sub && <p className="text-[11px] text-zinc-500 mt-0.5">{sub}</p>}
     </div>
   );
 }
