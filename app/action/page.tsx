@@ -1,17 +1,19 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { Plus, Search, Filter, Loader2, RefreshCw, Target, Flame, CheckSquare, Clock, Zap } from 'lucide-react';
+import { Plus, Search, Filter, Loader2, RefreshCw, Target, Flame, CheckSquare, Clock, Zap, Ban } from 'lucide-react';
 import GlobalDashboardStats from '@/components/tasks/GlobalDashboardStats';
 import TaskList from '@/components/tasks/TaskList';
 import TaskForm from '@/components/tasks/TaskForm';
 import GoalCountdownWidget from '@/components/goals/GoalCountdownWidget';
 import HabitTracker from '@/components/analytics/HabitTracker';
+import NotToDoLibrary from '@/components/action/NotToDoLibrary';
+import PressurePlan from '@/components/action/PressurePlan';
 import type { Task } from '@/components/tasks/TaskCard';
 import { triggerWidgetDataSync } from '@/lib/cache';
 
 type FilterStatus = 'all' | 'todo' | 'in-progress' | 'done';
-type Segment = 'tasks' | 'goals-habits';
+type Segment = 'tasks' | 'goals-habits' | 'not-to-do' | 'pressure';
 
 export default function ActionPage() {
   const [segment, setSegment] = useState<Segment>('tasks');
@@ -52,14 +54,14 @@ export default function ActionPage() {
     }
   }, [statusFilter]);
 
-  useEffect(() => { 
-    loadTasks(); 
-    
+  useEffect(() => {
+    loadTasks();
+
     const handleRefresh = () => {
       loadTasks();
       setStatsTrigger((c) => c + 1);
     };
-    
+
     window.addEventListener('dayly-refresh-tasks', handleRefresh);
     return () => window.removeEventListener('dayly-refresh-tasks', handleRefresh);
   }, [loadTasks]);
@@ -86,7 +88,6 @@ export default function ActionPage() {
         streak: userStats.stats?.streak_days ?? 0,
         xp: userStats.stats?.xp ?? 0,
       });
-      // Push fresh data to Android widgets
       triggerWidgetDataSync();
     });
   }, [statsTrigger]);
@@ -156,6 +157,14 @@ export default function ActionPage() {
     );
   });
 
+  // ── Segment config ────────────────────────────────────────
+  const segments = [
+    { id: 'tasks' as Segment,       label: 'Tasks',           icon: CheckSquare },
+    { id: 'goals-habits' as Segment, label: 'Goals & Habits', icon: Target },
+    { id: 'not-to-do' as Segment,   label: 'Not-to-dos',      icon: Ban },
+    { id: 'pressure' as Segment,    label: 'Pressure Plan',   icon: Flame },
+  ];
+
   return (
     <div className="min-h-screen bg-zinc-950 flex flex-col">
 
@@ -182,16 +191,13 @@ export default function ActionPage() {
           </div>
         </div>
 
-        {/* Segmented tabs */}
-        <div className="flex gap-0 border-b border-zinc-800">
-          {([
-            { id: 'tasks', label: 'Tasks', icon: CheckSquare },
-            { id: 'goals-habits', label: 'Goals & Habits', icon: Target },
-          ] as { id: Segment; label: string; icon: React.ElementType }[]).map(({ id, label, icon: Icon }) => (
+        {/* Segmented tabs — scrollable on mobile */}
+        <div className="flex gap-0 border-b border-zinc-800 overflow-x-auto scrollbar-none">
+          {segments.map(({ id, label, icon: Icon }) => (
             <button
               key={id}
               onClick={() => setSegment(id)}
-              className={`flex items-center gap-2 px-5 py-2.5 text-sm font-medium border-b-2 -mb-px transition-all ${
+              className={`flex items-center gap-2 px-4 py-2.5 text-sm font-medium border-b-2 -mb-px transition-all whitespace-nowrap ${
                 segment === id
                   ? 'border-indigo-500 text-white'
                   : 'border-transparent text-zinc-500 hover:text-zinc-300'
@@ -293,13 +299,24 @@ export default function ActionPage() {
       {/* ── Segment: Goals & Habits ── */}
       {segment === 'goals-habits' && (
         <div className="flex-1 px-6 py-6 space-y-6 max-w-5xl mx-auto w-full">
-          {/* Goals — direction first */}
           <GoalCountdownWidget />
-
-          {/* Habits — recurring behaviour */}
           <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-6">
             <HabitTracker />
           </div>
+        </div>
+      )}
+
+      {/* ── Segment: Not-to-do Library ── */}
+      {segment === 'not-to-do' && (
+        <div className="flex-1 px-6 py-6 max-w-2xl mx-auto w-full">
+          <NotToDoLibrary />
+        </div>
+      )}
+
+      {/* ── Segment: Pressure Plan ── */}
+      {segment === 'pressure' && (
+        <div className="flex-1 px-6 py-6 max-w-2xl mx-auto w-full">
+          <PressurePlan />
         </div>
       )}
 

@@ -5,7 +5,15 @@ import { addXP } from '@/lib/gamification';
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { blockId, duration, task_id } = body;
+    const {
+      blockId,
+      duration,
+      task_id,
+      // Phase 13: session review fields (all optional)
+      not_to_do_selected = [],   // [{label, emoji}]
+      triggered_distractions = [],
+      completion_note,
+    } = body;
 
     if (!blockId) {
       return NextResponse.json({ error: 'blockId is required' }, { status: 400 });
@@ -14,7 +22,7 @@ export async function POST(request: Request) {
     // Check idempotency: If already completed, do nothing
     const { data: existingBlock } = await supabase
       .from('time_blocks')
-      .select('completed')
+      .select('completed, task_id, mode')
       .eq('id', blockId)
       .single();
 
@@ -36,7 +44,7 @@ export async function POST(request: Request) {
     if (task_id) {
       const { data: task } = await supabase
         .from('tasks')
-        .select('elapsed_pomodoros')
+        .select('elapsed_pomodoros, title')
         .eq('id', task_id)
         .single();
 
@@ -48,10 +56,54 @@ export async function POST(request: Request) {
       }
     }
 
-    // Grant XP for completing a focus session — fire-and-forget
-    await addXP(30);
+    // ── XP Calculation ──────────────────────────────────────────────────────
+    // Base: +30 XP for completing a focus session
+    let xpEarned = 30;
+    let xpDeducted = 0;
 
-    return NextResponse.json({ success: true });
+    const distractionCount = triggered_distractions.length;
+    const hadNotToDoSelected = not_to_do_selected.length > 0;
+
+    if (hadNotToDoSelected && distractionCount === 0) {
+      // Clean session! User committed to not-to-dos and held the line
+      xpEarned += 15;
+    } else if (distractionCount >= 2) {
+      // Soft deduction — honest reporting is rewarded, but repeated slips are noted
+      xpDeducted = 5;
+    }
+
+    await addXP(xpEarned - xpDeducted);
+
+    // ── Save Session Review ──────────────────────────────────────────────────
+    // Fetch task title for the review record
+    let taskTitle: string | null = null;
+    if (task_id) {
+      const { data: t } = await supabase
+        .from('tasks')
+        .select('title')
+        .eq('id', task_id)
+        .single();
+      taskTitle = t?.title ?? null;
+    }
+
+    await supabase.from('session_reviews').insert({
+      time_block_id: blockId,
+      task_title: taskTitle,
+      selected_not_to_dos: not_to_do_selected,
+      triggered_distractions,
+      xp_earned: xpEarned,
+      xp_deducted: xpDeducted,
+      completion_note: completion_note ?? null,
+      session_duration_seconds: duration ?? null,
+    });
+
+    // Force the tasks list to re-fetch so the Pomodoro count updates instantly
+    return NextResponse.json({ 
+      success: true, 
+      xpEarned, 
+      xpDeducted, 
+      cleanSession: hadNotToDoSelected && distractionCount === 0 
+    });
   } catch (err) {
     console.error('[POST /api/timer/complete]', err);
     return NextResponse.json({ error: 'Failed to complete timer session' }, { status: 500 });

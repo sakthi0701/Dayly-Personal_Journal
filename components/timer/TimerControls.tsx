@@ -6,13 +6,16 @@ import { Play, Pause, Square, CheckCircle, Maximize2 } from 'lucide-react';
 interface TimerControlsProps {
   onFlipClock: () => void;
   onComplete?: () => void;
+  /** Override the start action (for not-to-do guard in Focus page) */
+  onStart?: () => void;
 }
 
-export default function TimerControls({ onFlipClock, onComplete }: TimerControlsProps) {
+export default function TimerControls({ onFlipClock, onComplete, onStart }: TimerControlsProps) {
   const { state, startTimer, pauseTimer, resumeTimer, completeTimer, abandonTimer } = useTimer();
   const { status } = state;
 
   const handleComplete = async () => {
+    // completeTimer with no args still saves session; review sheet handles XP breakdown
     await completeTimer();
     onComplete?.();
   };
@@ -31,7 +34,7 @@ export default function TimerControls({ onFlipClock, onComplete }: TimerControls
       {status === 'idle' && (
         <button
           id="timer-start-btn"
-          onClick={() => startTimer(state.task)}
+          onClick={onStart ?? (() => startTimer(state.task))}
           className="flex items-center gap-2 px-6 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-semibold rounded-xl transition-all shadow-lg shadow-indigo-500/20"
         >
           <Play className="w-4 h-4 fill-current" /> Start Session

@@ -39,6 +39,8 @@ export default function GlobalTimerUI() {
 
   const [showBreak, setShowBreak] = useState(false);
   const silentAudioRef = useRef<HTMLAudioElement | null>(null);
+  // Derived early so all useEffects below can reference it
+  const isOnFocusPage = pathname === '/focus';
 
   // ── Silent audio ────────────────────────────────────────────────────────
   useEffect(() => {
@@ -61,10 +63,13 @@ export default function GlobalTimerUI() {
   // ── Completion ──────────────────────────────────────────────────────────
   useEffect(() => {
     if (state.status === 'completed' && state.mode === 'pomodoro') {
-      setShowBreak(true);
+      // On /focus, SessionReviewSheet handles the post-session flow — don't show global break prompt
+      if (!isOnFocusPage) {
+        setShowBreak(true);
+      }
       if ('Notification' in window && Notification.permission === 'granted') {
-        new Notification('🍅 Pomodoro Complete! +30 XP', {
-          body: isPiPOpen ? 'Check the floating window.' : 'Great work focus session.',
+        new Notification('🍅 Pomodoro Complete!', {
+          body: isPiPOpen ? 'Check the floating window.' : 'Great work! Review your session.',
           icon: '/favicon.ico',
         });
       }
@@ -74,9 +79,9 @@ export default function GlobalTimerUI() {
           notifications: [
             {
               title: '🍅 Pomodoro Complete!',
-              body: 'Great work focus session. +30 XP. Take a break!',
+              body: 'Great work! Review your session for bonus XP.',
               id: Math.floor(Date.now() / 1000) % 100000,
-              schedule: { at: new Date(Date.now() + 1000) }, // Schedule 1 second from now
+              schedule: { at: new Date(Date.now() + 1000) },
             }
           ]
         }).catch(err => console.error('[Capacitor] Notification failed', err));
@@ -85,7 +90,7 @@ export default function GlobalTimerUI() {
     } else {
       setShowBreak(false);
     }
-  }, [state.status, state.mode, isPiPOpen]);
+  }, [state.status, state.mode, isPiPOpen, isOnFocusPage]);
 
   // ── Auto-close PiP ──────────────────────────────────────────────────────
   useEffect(() => {
@@ -130,7 +135,6 @@ export default function GlobalTimerUI() {
   }, [setPiPWindow]);
 
   // ── Derived ─────────────────────────────────────────────────────────────
-  const isOnFocusPage = pathname === '/focus';
   const isActive = state.status === 'running' || state.status === 'paused';
   const progress = state.mode === 'pomodoro' && state.duration > 0
     ? Math.max(0, Math.min(1, 1 - remaining / state.duration))

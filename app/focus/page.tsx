@@ -1,53 +1,55 @@
 'use client';
 
 import { useState, useEffect, useRef } from 'react';
-import { useTimer, type TimerMode, type TimerTask } from '@/components/timer/TimerProvider';
+import { useTimer, type TimerMode, type TimerTask, type NotToDoItem } from '@/components/timer/TimerProvider';
 import PomodoroTimer from '@/components/timer/PomodoroTimer';
 import StopwatchTimer from '@/components/timer/StopwatchTimer';
 import TimerControls from '@/components/timer/TimerControls';
 import FlipClock from '@/components/timer/FlipClock';
 import WhiteNoise from '@/components/timer/WhiteNoise';
-import { CheckSquare, ChevronDown, Settings2 } from 'lucide-react';
+import NotToDoSelector from '@/components/focus/NotToDoSelector';
+import SessionReviewSheet from '@/components/focus/SessionReviewSheet';
+import { CheckSquare, ChevronDown, Settings2, Flame, AlertTriangle } from 'lucide-react';
 
-// ─── Task Picker ──────────────────────────────────────────────────────────────
+// ─── Task Picker (extended to surface pressure tasks) ────────────────────────
+
+interface PressureTask {
+  id: string;
+  title: string;
+  priority: number;
+  deadline: string | null;
+  status: string;
+}
 
 function TaskPicker({ onSelect }: { onSelect: (task: TimerTask | null) => void }) {
   const { state } = useTimer();
   const [tasks, setTasks] = useState<TimerTask[]>([]);
+  const [pressureTasks, setPressureTasks] = useState<PressureTask[]>([]);
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
   const fetchTasks = () => {
-    fetch('/api/tasks?status=todo')
-      .then((r) => r.json())
-      .then((d) => {
-        const mapped = (d.tasks ?? []).filter((t: { status: string }) => t.status !== 'done').map((t: {
-          id: string;
-          title: string;
-          estimated_pomodoros: number;
-          elapsed_pomodoros: number;
-        }) => ({
+    Promise.all([
+      fetch('/api/tasks?status=todo').then((r) => r.json()).catch(() => ({ tasks: [] })),
+      fetch('/api/pressure-tasks?filter=active').then((r) => r.json()).catch(() => ({ tasks: [] })),
+    ]).then(([taskData, pressureData]) => {
+      const mapped = (taskData.tasks ?? [])
+        .filter((t: { status: string }) => t.status !== 'done')
+        .map((t: { id: string; title: string; estimated_pomodoros: number; elapsed_pomodoros: number }) => ({
           id: t.id,
           title: t.title,
           estimated_pomodoros: t.estimated_pomodoros,
           elapsed_pomodoros: t.elapsed_pomodoros,
         }));
-        setTasks(mapped);
-      })
-      .catch(() => null);
+      setTasks(mapped);
+      setPressureTasks((pressureData.tasks ?? []).filter((t: PressureTask) => t.status !== 'done'));
+    });
   };
 
+  useEffect(() => { fetchTasks(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
-    fetchTasks();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  useEffect(() => {
-    if (state.status === 'idle' || state.status === 'completed') {
-      fetchTasks();
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [state.status]);
+    if (state.status === 'idle' || state.status === 'completed') fetchTasks();
+  }, [state.status]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
@@ -57,21 +59,24 @@ function TaskPicker({ onSelect }: { onSelect: (task: TimerTask | null) => void }
     return () => document.removeEventListener('mousedown', handler);
   }, []);
 
-  const handleSelect = (task: TimerTask | null) => {
-    onSelect(task);
-    setOpen(false);
-  };
+  const handleSelect = (task: TimerTask | null) => { onSelect(task); setOpen(false); };
+
+  const hasPressure = pressureTasks.length > 0;
 
   return (
     <div ref={ref} className="relative w-full max-w-sm">
       <button
         onClick={() => setOpen((o) => !o)}
-        className="w-full flex items-center justify-between gap-3 px-4 py-2.5 bg-zinc-900 border border-zinc-800 hover:border-zinc-700 rounded-xl text-sm text-left transition-all"
+        className={`w-full flex items-center justify-between gap-3 px-4 py-2.5 border rounded-xl text-sm text-left transition-all ${
+          hasPressure && !state.task
+            ? 'bg-orange-950/20 border-orange-700/40 hover:border-orange-600/60'
+            : 'bg-zinc-900 border-zinc-800 hover:border-zinc-700'
+        }`}
       >
         <div className="flex items-center gap-2 min-w-0">
-          <CheckSquare className="w-4 h-4 text-zinc-600 shrink-0" />
-          <span className={`truncate ${state.task ? 'text-white' : 'text-zinc-600'}`}>
-            {state.task ? state.task.title : 'Select a task (optional)'}
+          <CheckSquare className={`w-4 h-4 shrink-0 ${hasPressure && !state.task ? 'text-orange-400' : 'text-zinc-600'}`} />
+          <span className={`truncate ${state.task ? 'text-white' : hasPressure ? 'text-orange-300' : 'text-zinc-600'}`}>
+            {state.task ? state.task.title : hasPressure ? `${pressureTasks.length} deadline task${pressureTasks.length > 1 ? 's' : ''} due` : 'Select a task (optional)'}
           </span>
         </div>
         <ChevronDown className={`w-4 h-4 text-zinc-600 shrink-0 transition-transform ${open ? 'rotate-180' : ''}`} />
@@ -79,27 +84,74 @@ function TaskPicker({ onSelect }: { onSelect: (task: TimerTask | null) => void }
 
       {open && (
         <div className="absolute top-full mt-1 w-full z-20 bg-zinc-900 border border-zinc-800 rounded-xl shadow-xl overflow-hidden">
-          <div className="max-h-60 overflow-y-auto py-1">
+          <div className="max-h-72 overflow-y-auto py-1">
             <button
               onClick={() => handleSelect(null)}
               className="w-full flex items-center px-4 py-2.5 text-sm text-zinc-500 hover:bg-zinc-800 transition-colors text-left"
             >
               Free focus (no task)
             </button>
-            {tasks.map((task) => (
-              <button
-                key={task.id}
-                onClick={() => handleSelect(task)}
-                className="w-full flex items-center justify-between px-4 py-2.5 text-sm hover:bg-zinc-800 transition-colors text-left gap-3"
-              >
-                <span className="text-white truncate">{task.title}</span>
-                <span className="text-zinc-600 text-xs shrink-0">
-                  {task.elapsed_pomodoros}/{task.estimated_pomodoros} 🍅
-                </span>
-              </button>
-            ))}
-            {tasks.length === 0 && (
-              <p className="px-4 py-3 text-xs text-zinc-600 text-center">No active tasks. Create one in Focus Room.</p>
+
+            {/* Pressure tasks section */}
+            {pressureTasks.length > 0 && (
+              <>
+                <div className="px-4 py-1.5 text-xs font-semibold uppercase tracking-wider text-orange-400/70 border-t border-zinc-800/60 flex items-center gap-1.5">
+                  <Flame className="w-3 h-3" /> Today&apos;s Deadlines
+                </div>
+                {pressureTasks.map((pt) => {
+                  const diff = pt.deadline ? new Date(pt.deadline).getTime() - Date.now() : null;
+                  const mins = diff ? Math.floor(diff / 60000) : null;
+                  const isUrgent = mins !== null && mins < 120;
+                  return (
+                    <button
+                      key={pt.id}
+                      onClick={() => handleSelect({ id: pt.id, title: pt.title, estimated_pomodoros: 1, elapsed_pomodoros: 0 })}
+                      className="w-full flex items-center justify-between px-4 py-2.5 text-sm hover:bg-zinc-800 transition-colors text-left gap-3"
+                    >
+                      <span className="text-white truncate">{pt.title}</span>
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        {isUrgent && <AlertTriangle className="w-3 h-3 text-red-400" />}
+                        {pt.deadline && (
+                          <span className={`text-xs ${isUrgent ? 'text-red-400' : 'text-zinc-500'}`}>
+                            {mins !== null && mins < 60
+                              ? `${mins}m`
+                              : mins !== null
+                              ? `${Math.floor(mins / 60)}h`
+                              : new Date(pt.deadline).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                          </span>
+                        )}
+                      </div>
+                    </button>
+                  );
+                })}
+              </>
+            )}
+
+            {/* Regular tasks */}
+            {tasks.length > 0 && (
+              <>
+                {pressureTasks.length > 0 && (
+                  <div className="px-4 py-1.5 text-xs font-semibold uppercase tracking-wider text-zinc-600 border-t border-zinc-800/60">
+                    All Tasks
+                  </div>
+                )}
+                {tasks.map((task) => (
+                  <button
+                    key={task.id}
+                    onClick={() => handleSelect(task)}
+                    className="w-full flex items-center justify-between px-4 py-2.5 text-sm hover:bg-zinc-800 transition-colors text-left gap-3"
+                  >
+                    <span className="text-white truncate">{task.title}</span>
+                    <span className="text-zinc-600 text-xs shrink-0">
+                      {task.elapsed_pomodoros}/{task.estimated_pomodoros} 🍅
+                    </span>
+                  </button>
+                ))}
+              </>
+            )}
+
+            {tasks.length === 0 && pressureTasks.length === 0 && (
+              <p className="px-4 py-3 text-xs text-zinc-600 text-center">No active tasks. Create one in Action.</p>
             )}
           </div>
         </div>
@@ -119,7 +171,6 @@ function DurationPicker() {
 
   return (
     <div className="flex flex-col gap-2">
-      {/* Duration presets — only when idle */}
       {!isRunning && (
         <div className="flex items-center gap-1.5 bg-zinc-900 border border-zinc-800 rounded-xl p-1">
           <Settings2 className="w-3.5 h-3.5 text-zinc-600 ml-1.5" />
@@ -138,7 +189,6 @@ function DurationPicker() {
           ))}
         </div>
       )}
-      {/* +1 min extend — only when running or paused */}
       {isRunning && state.mode === 'pomodoro' && (
         <button
           onClick={() => extendTimer(1)}
@@ -156,7 +206,7 @@ function DurationPicker() {
 function ModeToggle() {
   const { state, setMode } = useTimer();
   const modes: { value: TimerMode; label: string }[] = [
-    { value: 'pomodoro',  label: '🍅 Pomodoro' },
+    { value: 'pomodoro', label: '🍅 Pomodoro' },
     { value: 'stopwatch', label: '⏱ Stopwatch' },
   ];
 
@@ -180,22 +230,35 @@ function ModeToggle() {
   );
 }
 
-// ─── Inner page (inside TimerProvider) ───────────────────────────────────────
+// ─── Focus Page ───────────────────────────────────────────────────────────────
 
 export default function FocusPage() {
-  const { state, startTimer, abandonTimer, extendTimer, setTask } = useTimer();
+  const { state, startTimer, abandonTimer, extendTimer, setTask, setNotToDoItems, completeTimer } = useTimer();
   const [strictMode, setStrictMode] = useState(false);
   const [showFlipClock, setShowFlipClock] = useState(false);
   const [strictFailures, setStrictFailures] = useState(0);
 
-  // Phase 9: Strict Mode Visibility Guard
+  // Phase 13: Not-to-do + review state
+  const [selectedNotToDos, setSelectedNotToDos] = useState<NotToDoItem[]>([]);
+  const [showReviewSheet, setShowReviewSheet] = useState(false);
+  const [reviewResult, setReviewResult] = useState<{ xpEarned: number; xpDeducted: number; cleanSession: boolean } | null>(null);
+  const [isSubmittingReview, setIsSubmittingReview] = useState(false);
+
+  // Track completion trigger — we want to show review sheet when session completes
+  const prevStatus = useRef(state.status);
   useEffect(() => {
-    // Request notification permission for Pomodoro completion
+    if (prevStatus.current === 'running' && state.status === 'completed') {
+      // Session just completed — show review
+      setShowReviewSheet(true);
+    }
+    prevStatus.current = state.status;
+  }, [state.status]);
+
+  // Notification permission
+  useEffect(() => {
     if ('Notification' in window && Notification.permission === 'default') {
       Notification.requestPermission();
     }
-    
-    // Capacitor Native
     import('@capacitor/core').then(({ Capacitor }) => {
       if (Capacitor.isNativePlatform()) {
         import('@capacitor/local-notifications').then(({ LocalNotifications }) => {
@@ -205,6 +268,7 @@ export default function FocusPage() {
     });
   }, []);
 
+  // Strict Mode guard
   useEffect(() => {
     if (!strictMode || state.status !== 'running') return;
 
@@ -214,9 +278,6 @@ export default function FocusPage() {
           const newCount = prev + 1;
           if (newCount >= 3) {
             abandonTimer('strict_mode_violation');
-            alert('Session failed! You switched away 3 times in Strict Mode.');
-          } else {
-            alert(`Strict Mode Warning! You switched tabs. (${newCount}/3 violations)`);
           }
           return newCount;
         });
@@ -224,21 +285,78 @@ export default function FocusPage() {
     };
 
     document.addEventListener('visibilitychange', handleVisibilityChange);
-    return () => {
-      document.removeEventListener('visibilitychange', handleVisibilityChange);
-    };
+    return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
   }, [strictMode, state.status, abandonTimer]);
 
   // Reset failures on new session
   useEffect(() => {
-    if (state.status === 'idle') setStrictFailures(0);
+    if (state.status === 'idle') {
+      setStrictFailures(0);
+      setSelectedNotToDos([]);
+      setShowReviewSheet(false);
+      setReviewResult(null);
+    }
   }, [state.status]);
+
+  // Sync selectedNotToDos into timer state (for localStorage persistence)
+  const handleNotToDoChange = (items: NotToDoItem[]) => {
+    setSelectedNotToDos(items);
+    setNotToDoItems(items);
+  };
+
+  // Handle "Start Session" with guard for strict mode
+  const handleStart = () => {
+    if (strictMode && state.mode === 'pomodoro' && selectedNotToDos.length === 0) {
+      // Show a brief warning — we'll use a local state flag
+      setShowStrictWarning(true);
+      setTimeout(() => setShowStrictWarning(false), 3000);
+      return;
+    }
+    startTimer(state.task, strictMode, selectedNotToDos);
+  };
+  const [showStrictWarning, setShowStrictWarning] = useState(false);
+
+  // Handle review submission
+  const handleReviewSubmit = async (data: { triggeredDistractions: NotToDoItem[]; completionNote: string }) => {
+    setIsSubmittingReview(true);
+    try {
+      const result = await completeTimer({
+        triggeredDistractions: data.triggeredDistractions,
+        completionNote: data.completionNote,
+      });
+      setReviewResult(result);
+    } finally {
+      setIsSubmittingReview(false);
+    }
+  };
+
+  const isRunning = state.status === 'running' || state.status === 'paused';
+  const isPomodoro = state.mode === 'pomodoro';
 
   return (
     <div className="min-h-screen bg-zinc-950 flex flex-col">
       {/* Flip clock overlay */}
       {showFlipClock && <FlipClock onExit={() => setShowFlipClock(false)} />}
 
+      {/* Session Review Sheet */}
+      {showReviewSheet && (
+        <SessionReviewSheet
+          notToDoItems={state.notToDoItems}
+          taskTitle={state.task?.title ?? null}
+          sessionMinutes={state.elapsed / 60}
+          onSubmit={handleReviewSubmit}
+          xpResult={reviewResult}
+          isSubmitting={isSubmittingReview}
+        />
+      )}
+
+      {/* Strict warning toast */}
+      {showStrictWarning && (
+        <div className="fixed top-20 left-1/2 -translate-x-1/2 z-50 px-4 py-3 bg-red-950/90 border border-red-700/60 text-red-200 text-sm rounded-xl shadow-xl flex items-center gap-2">
+          <AlertTriangle className="w-4 h-4 text-red-400" />
+          Strict mode requires at least one not-to-do item
+        </div>
+      )}
 
       {/* Page header */}
       <div className="px-6 pt-6 pb-4 border-b border-zinc-800/60">
@@ -253,15 +371,16 @@ export default function FocusPage() {
           {/* Mode + Duration controls */}
           <div className="flex flex-wrap items-center justify-center gap-3">
             <ModeToggle />
-            {state.mode === 'pomodoro' && <DurationPicker />}
+            {isPomodoro && <DurationPicker />}
           </div>
 
           {/* Timer display */}
           <div className="flex flex-col items-center gap-6">
-            {state.mode === 'pomodoro' ? <PomodoroTimer /> : <StopwatchTimer />}
+            {isPomodoro ? <PomodoroTimer /> : <StopwatchTimer />}
             <TimerControls
               onFlipClock={() => setShowFlipClock(true)}
-              onComplete={() => { /* break prompt handled globally by GlobalTimerUI */ }}
+              onComplete={() => { /* handled globally by GlobalTimerUI */ }}
+              onStart={handleStart}
             />
           </div>
 
@@ -270,14 +389,35 @@ export default function FocusPage() {
         </div>
 
         {/* Sidebar column */}
-        <div className="lg:w-80 border-t lg:border-t-0 lg:border-l border-zinc-800/60 p-6 flex flex-col gap-6">
+        <div className="lg:w-80 border-t lg:border-t-0 lg:border-l border-zinc-800/60 p-6 flex flex-col gap-5">
+
           {/* Task Picker */}
           <div>
             <label className="text-xs font-semibold uppercase tracking-wider text-zinc-600 mb-2 block">
-              Focusing On
+              {isPomodoro ? '📌 Focusing On' : '⏱ Timing'}
             </label>
             <TaskPicker onSelect={setTask} />
+            {isPomodoro && !state.task && !isRunning && (
+              <p className="text-xs text-zinc-600 mt-1.5 ml-1">
+                Tip: Selecting a task makes sessions count toward your goals
+              </p>
+            )}
           </div>
+
+          {/* Not-to-do Selector — only for Pomodoro */}
+          {isPomodoro && (
+            <div>
+              <label className="text-xs font-semibold uppercase tracking-wider text-zinc-600 mb-2 block">
+                🚫 Not-to-dos
+              </label>
+              <NotToDoSelector
+                selected={selectedNotToDos}
+                onChange={handleNotToDoChange}
+                strictMode={strictMode}
+                isRunning={isRunning}
+              />
+            </div>
+          )}
 
           {/* Strict Mode Toggle */}
           <div>
@@ -299,7 +439,9 @@ export default function FocusPage() {
                   {strictMode ? '🔒 Strict Mode ON' : '🔓 Strict Mode OFF'}
                 </p>
                 <p className="text-xs opacity-60 mt-0.5">
-                  {strictMode ? `3 tab switches = fail (${strictFailures}/3)` : 'Tab switching allowed'}
+                  {strictMode
+                    ? `3 tab switches = fail (${strictFailures}/3)`
+                    : 'Tab switching allowed'}
                 </p>
               </div>
               <div className={`w-10 h-5 rounded-full transition-all ${strictMode ? 'bg-red-500' : 'bg-zinc-700'}`}>
@@ -323,5 +465,3 @@ export default function FocusPage() {
     </div>
   );
 }
-
-

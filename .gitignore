@@ -64,3 +64,4 @@ _bmad-output/
 *.log
 
 .vercel
+lib/schema_phase13.sql
