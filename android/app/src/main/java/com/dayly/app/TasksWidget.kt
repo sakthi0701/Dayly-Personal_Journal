@@ -77,12 +77,13 @@ class TasksWidget : AppWidgetProvider() {
             }
         }
 
-        // Refresh button intent
-        val refreshIntent = Intent(context, TasksWidget::class.java).apply {
-            action = "com.dayly.WIDGET_UPDATE"
+        // ── Refresh: explicit ComponentName required for Android 12+ broadcast delivery ──
+        val refreshIntent = Intent("com.dayly.WIDGET_UPDATE").apply {
+            component = ComponentName(context, TasksWidget::class.java)
         }
         val pendingRefresh = android.app.PendingIntent.getBroadcast(
-            context, widgetId + 100000, refreshIntent, android.app.PendingIntent.FLAG_UPDATE_CURRENT or android.app.PendingIntent.FLAG_IMMUTABLE
+            context, widgetId + 200000, refreshIntent,
+            android.app.PendingIntent.FLAG_UPDATE_CURRENT or android.app.PendingIntent.FLAG_IMMUTABLE
         )
         views.setOnClickPendingIntent(R.id.widget_refresh_button, pendingRefresh)
 
