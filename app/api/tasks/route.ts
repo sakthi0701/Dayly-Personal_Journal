@@ -8,35 +8,44 @@ export async function GET(request: Request) {
     const statusFilter = searchParams.get('status');
 
     // Fetch top-level tasks (no parent) with their tags
+    // If tagId is present, we use an inner join to correctly filter the parents
+    const selectStr = tagId
+      ? `*, subtasks:tasks!parent_task_id(*), task_tags!inner(tag_id, tags(id, name)), time_blocks(duration, mode, completed)`
+      : `*, subtasks:tasks!parent_task_id(*), task_tags(tags(id, name)), time_blocks(duration, mode, completed)`;
+
     let query = supabase
       .from('tasks')
-      .select(`
-        *,
-        subtasks:tasks!parent_task_id(*),
-        task_tags (
-          tags ( id, name )
-        ),
-        time_blocks ( duration, mode, completed )
-      `)
+      .select(selectStr)
       .is('parent_task_id', null)
       .order('priority', { ascending: false })
       .order('position', { ascending: true })
       .order('created_at', { ascending: false });
 
-    if (statusFilter) {
-      query = query.eq('status', statusFilter);
+    if (tagId) {
+      query = query.eq('task_tags.tag_id', tagId);
     }
 
     const { data: tasks, error } = await query;
 
     if (error) throw error;
 
-    // Flatten tags from nested join
-    const normalized = (tasks || []).map((task) => ({
-      ...task,
-      tags: task.task_tags?.map((tt: { tags: { id: string; name: string } | null }) => tt.tags).filter(Boolean) ?? [],
-      task_tags: undefined,
-    }));
+    // Flatten tags, and apply JS-level status filtering to support subtasks correctly
+    let normalized = (tasks || []).map((task) => {
+      let filteredSubtasks = task.subtasks || [];
+      if (statusFilter && statusFilter !== 'all') {
+        filteredSubtasks = filteredSubtasks.filter((st: any) => st.status === statusFilter);
+      }
+      return {
+        ...task,
+        subtasks: filteredSubtasks,
+        tags: task.task_tags?.map((tt: any) => tt.tags).filter(Boolean) ?? [],
+        task_tags: undefined,
+      };
+    });
+
+    if (statusFilter && statusFilter !== 'all') {
+      normalized = normalized.filter(t => t.status === statusFilter || t.subtasks.length > 0);
+    }
 
     return NextResponse.json({ tasks: normalized });
   } catch (err) {

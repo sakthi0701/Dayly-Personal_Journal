@@ -11,6 +11,17 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'blockId is required' }, { status: 400 });
     }
 
+    // Check idempotency: If already completed, do nothing
+    const { data: existingBlock } = await supabase
+      .from('time_blocks')
+      .select('completed')
+      .eq('id', blockId)
+      .single();
+
+    if (existingBlock?.completed) {
+      return NextResponse.json({ success: true, message: 'Already completed' });
+    }
+
     const end_time = new Date().toISOString();
 
     // Mark the block as completed

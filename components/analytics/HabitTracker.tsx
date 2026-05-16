@@ -16,6 +16,7 @@ interface Habit {
   color: string | null;
   habit_type: 'good' | 'bad' | null;
   frequency: { type: string } | null;
+  created_at: string;
   habit_logs: HabitLog[];
 }
 
@@ -31,23 +32,57 @@ const COLOR_MAP: Record<string, { dot: string; bar: string; success: string }> =
 const COLORS = Object.keys(COLOR_MAP);
 const safeColor = (c: string | null) => COLOR_MAP[c ?? ''] ?? COLOR_MAP.indigo;
 
-function calcStreak(logs: HabitLog[]): number {
+function getLocalDateStr(date: Date): string {
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+}
+
+function calcStreak(habit: Habit): number {
   const today = new Date();
+  const createdDate = new Date(habit.created_at);
+  createdDate.setHours(0, 0, 0, 0); // normalize
+
+  const isBad = habit.habit_type === 'bad';
   let streak = 0;
+
   for (let i = 0; i < 90; i++) {
-    const d = new Date(today);
-    d.setDate(d.getDate() - i);
-    const dateStr = d.toISOString().slice(0, 10);
-    const log = logs.find((l) => l.logged_at.slice(0, 10) === dateStr);
-    if (log?.status === 'success') {
-      streak++;
-    } else if (i === 0) {
-      // today not yet logged — don't break the streak yet
-      continue;
+    const d = new Date();
+    d.setDate(today.getDate() - i);
+    d.setHours(0, 0, 0, 0);
+
+    if (d < createdDate) break; // Don't count days before the habit existed
+
+    const dateStr = getLocalDateStr(d);
+    const log = habit.habit_logs.find((l) => getLocalDateStr(new Date(l.logged_at)) === dateStr);
+
+    if (isBad) {
+      if (!log || log.status === 'success') {
+        streak++;
+      } else if (i === 0) {
+        continue; // if failed today, the current streak is 0, but we break on the else. Actually wait.
+        // If it's a bad habit and they failed today, the streak IS broken (streak = 0). 
+        // We shouldn't continue, we should break. So let's fall through to break.
+      } else {
+        break;
+      }
     } else {
-      break;
+      if (log?.status === 'success') {
+        streak++;
+      } else if (i === 0) {
+        continue;
+      } else {
+        break;
+      }
     }
   }
+
+  // Adjust for bad habits: if failed today, streak is strictly 0.
+  if (isBad && streak > 0) {
+    const todayLog = habit.habit_logs.find((l) => getLocalDateStr(new Date(l.logged_at)) === getLocalDateStr(today));
+    if (todayLog?.status === 'failed') {
+      return 0;
+    }
+  }
+
   return streak;
 }
 
@@ -400,9 +435,10 @@ function HabitCard({
 }) {
   const isEditing = editingId === habit.id;
   const colors = safeColor(habit.color);
-  const todayStr = new Date().toISOString().slice(0, 10);
-  const todayLog = habit.habit_logs.find((l) => l.logged_at.slice(0, 10) === todayStr);
-  const streak = calcStreak(habit.habit_logs);
+  const today = new Date();
+  const todayStr = getLocalDateStr(today);
+  const todayLog = habit.habit_logs.find((l) => getLocalDateStr(new Date(l.logged_at)) === todayStr);
+  const streak = calcStreak(habit);
 
   const isLogging = (s: string) => logging === habit.id + s;
 
@@ -542,17 +578,29 @@ function HabitCard({
       {/* 14-day sparkline */}
       <div className="mt-3 flex gap-0.5">
         {[...Array(14)].map((_, i) => {
-          const d = new Date();
+          const d = new Date(today);
           d.setDate(d.getDate() - (13 - i));
-          const ds = d.toISOString().slice(0, 10);
-          const log = habit.habit_logs.find((l) => l.logged_at.slice(0, 10) === ds);
-          const bg = !log
-            ? 'bg-zinc-800/80'
-            : log.status === 'success'
-            ? isBad ? 'bg-emerald-600' : colors.bar
-            : log.status === 'failed'
-            ? 'bg-rose-600'
-            : 'bg-zinc-600';
+          const ds = getLocalDateStr(d);
+          const log = habit.habit_logs.find((l) => getLocalDateStr(new Date(l.logged_at)) === ds);
+          
+          const createdDate = new Date(habit.created_at);
+          createdDate.setHours(0, 0, 0, 0);
+          d.setHours(0, 0, 0, 0);
+
+          let bg = 'bg-zinc-800/80';
+          if (d >= createdDate) {
+            if (isBad) {
+               // Bad habit sparkline
+               if (!log || log.status === 'success') bg = 'bg-emerald-600';
+               else bg = 'bg-rose-600'; // failed
+            } else {
+               // Good habit sparkline
+               if (log?.status === 'success') bg = colors.bar;
+               else if (log?.status === 'failed') bg = 'bg-rose-600';
+               else if (log?.status === 'skipped') bg = 'bg-zinc-600';
+            }
+          }
+
           return (
             <div
               key={i}

@@ -12,7 +12,7 @@ const config: CapacitorConfig = {
   //
   // REPLACE THIS URL after running: vercel --prod
   server: {
-    url: 'https://dayly-eta.vercel.app',     // Live Vercel deployment
+    url: 'https://dayly7.vercel.app',     // Live Vercel deployment
     cleartext: false,                     // Force HTTPS only
     androidScheme: 'https',              // Required for cookies & Supabase auth
   },

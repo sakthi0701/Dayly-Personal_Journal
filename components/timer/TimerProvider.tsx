@@ -43,6 +43,7 @@ type TimerAction =
   | { type: 'SET_MODE'; mode: TimerMode }
   | { type: 'SET_DURATION'; minutes: number }
   | { type: 'EXTEND_DURATION'; seconds: number; now: number }
+  | { type: 'SET_TASK'; task: TimerTask | null }
   | { type: 'RESTORE'; state: TimerState };
 
 // ─── Default State ────────────────────────────────────────────────────────────
@@ -88,22 +89,27 @@ function timerReducer(state: TimerState, action: TimerAction): TimerState {
     case 'RESUME':
       return { ...state, status: 'running', lastTick: action.now };
     case 'COMPLETE':
-      return { ...state, status: 'completed' };
+      return { 
+        ...state, 
+        status: 'completed',
+        task: state.task ? { ...state.task, elapsed_pomodoros: state.task.elapsed_pomodoros + (state.mode === 'pomodoro' ? 1 : 0) } : null
+      };
     case 'ABANDON':
       return { ...defaultState, mode: state.mode, duration: state.duration };
     case 'SET_MODE':
       return { ...defaultState, mode: action.mode, duration: action.mode === 'pomodoro' ? state.duration : 0 };
+    case 'SET_TASK':
+      return { ...state, task: action.task };
     case 'SET_DURATION':
       return { ...state, duration: action.minutes * 60 };
     case 'EXTEND_DURATION': {
-      // If extending from a completed session: reset elapsed, restore original duration + extension
-      // This avoids the race condition from completeTimer → startTimer (async) → extendTimer
+      // If extending from a completed session: keep elapsed as is, add to duration
+      // This makes it a 26 min session with 25 mins completed
       if (state.status === 'completed') {
-        const baseDuration = POMODORO_DURATION; // always extend from the base 25min
         return {
           ...state,
-          duration: baseDuration + action.seconds,
-          elapsed: 0,
+          duration: state.duration + action.seconds,
+          // We do not reset elapsed! So elapsed is 25m, duration is 26m.
           status: 'running',
           lastTick: action.now,
         };
@@ -131,6 +137,8 @@ interface TimerContextValue {
   setMode: (mode: TimerMode) => void;
   setDuration: (minutes: number) => void;
   extendTimer: (minutes: number) => void;
+  setTask: (task: TimerTask | null) => void;
+  dismissTimer: () => void;
 }
 
 const TimerContext = createContext<TimerContextValue | null>(null);
@@ -239,6 +247,11 @@ export function TimerProvider({ children }: { children: ReactNode }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ blockId, duration: elapsed, task_id: task?.id ?? null }),
       });
+      
+      // Force the tasks list to re-fetch so the Pomodoro count (elapsed_pomodoros) updates instantly
+      if (typeof window !== 'undefined') {
+        window.dispatchEvent(new Event('dayly-refresh-tasks'));
+      }
     } catch (err) {
       console.error('Failed to complete timer:', err);
     }
@@ -261,7 +274,14 @@ export function TimerProvider({ children }: { children: ReactNode }) {
 
   const setMode = useCallback((mode: TimerMode) => dispatch({ type: 'SET_MODE', mode }), []);
   const setDuration = useCallback((minutes: number) => dispatch({ type: 'SET_DURATION', minutes }), []);
-  const extendTimer = useCallback((minutes: number) => dispatch({ type: 'EXTEND_DURATION', seconds: minutes * 60, now: Date.now() }), []);
+  const extendTimer = useCallback((minutes: number) => {
+    dispatch({ type: 'EXTEND_DURATION', seconds: minutes * 60, now: Date.now() });
+  }, []);
+
+  const setTask = useCallback((task: TimerTask | null) => {
+    dispatch({ type: 'SET_TASK', task });
+  }, []);
+  const dismissTimer = useCallback(() => dispatch({ type: 'ABANDON' }), []);
 
   const remaining =
     state.mode === 'pomodoro'
@@ -293,6 +313,8 @@ export function TimerProvider({ children }: { children: ReactNode }) {
       setMode,
       setDuration,
       extendTimer,
+      setTask,
+      dismissTimer,
     }}>
       {children}
     </TimerContext.Provider>

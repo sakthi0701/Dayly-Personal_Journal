@@ -97,6 +97,24 @@ class SunWarriorWidget : AppWidgetProvider() {
         views.setTextViewText(R.id.widget_state_label, label)
         views.setTextColor(R.id.widget_state_label, labelColor)
 
+        // Refresh button intent
+        val refreshIntent = Intent(context, SunWarriorWidget::class.java).apply {
+            action = "com.dayly.WIDGET_UPDATE"
+        }
+        val pendingRefresh = android.app.PendingIntent.getBroadcast(
+            context, widgetId, refreshIntent, android.app.PendingIntent.FLAG_UPDATE_CURRENT or android.app.PendingIntent.FLAG_IMMUTABLE
+        )
+        views.setOnClickPendingIntent(R.id.widget_refresh_button, pendingRefresh)
+
+        // Open app intent
+        val launchIntent = context.packageManager.getLaunchIntentForPackage(context.packageName)
+        if (launchIntent != null) {
+            val pendingLaunch = android.app.PendingIntent.getActivity(
+                context, widgetId, launchIntent, android.app.PendingIntent.FLAG_UPDATE_CURRENT or android.app.PendingIntent.FLAG_IMMUTABLE
+            )
+            views.setOnClickPendingIntent(R.id.widget_streak_number, pendingLaunch)
+        }
+
         appWidgetManager.updateAppWidget(widgetId, views)
     }
 }

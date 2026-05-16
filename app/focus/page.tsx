@@ -15,7 +15,6 @@ function TaskPicker({ onSelect }: { onSelect: (task: TimerTask | null) => void }
   const { state } = useTimer();
   const [tasks, setTasks] = useState<TimerTask[]>([]);
   const [open, setOpen] = useState(false);
-  const [selected, setSelected] = useState<TimerTask | null>(null);
   const ref = useRef<HTMLDivElement>(null);
 
   const fetchTasks = () => {
@@ -34,17 +33,6 @@ function TaskPicker({ onSelect }: { onSelect: (task: TimerTask | null) => void }
           elapsed_pomodoros: t.elapsed_pomodoros,
         }));
         setTasks(mapped);
-        
-        // Update selected task if it's in the list
-        setSelected((prev) => {
-          if (!prev) return prev;
-          const updated = mapped.find((t: TimerTask) => t.id === prev.id);
-          if (updated && updated.elapsed_pomodoros !== prev.elapsed_pomodoros) {
-            onSelect(updated);
-            return updated;
-          }
-          return prev;
-        });
       })
       .catch(() => null);
   };
@@ -70,7 +58,6 @@ function TaskPicker({ onSelect }: { onSelect: (task: TimerTask | null) => void }
   }, []);
 
   const handleSelect = (task: TimerTask | null) => {
-    setSelected(task);
     onSelect(task);
     setOpen(false);
   };
@@ -83,8 +70,8 @@ function TaskPicker({ onSelect }: { onSelect: (task: TimerTask | null) => void }
       >
         <div className="flex items-center gap-2 min-w-0">
           <CheckSquare className="w-4 h-4 text-zinc-600 shrink-0" />
-          <span className={`truncate ${selected ? 'text-white' : 'text-zinc-600'}`}>
-            {selected ? selected.title : 'Select a task (optional)'}
+          <span className={`truncate ${state.task ? 'text-white' : 'text-zinc-600'}`}>
+            {state.task ? state.task.title : 'Select a task (optional)'}
           </span>
         </div>
         <ChevronDown className={`w-4 h-4 text-zinc-600 shrink-0 transition-transform ${open ? 'rotate-180' : ''}`} />
@@ -196,8 +183,7 @@ function ModeToggle() {
 // ─── Inner page (inside TimerProvider) ───────────────────────────────────────
 
 export default function FocusPage() {
-  const { state, startTimer, abandonTimer, extendTimer } = useTimer();
-  const [selectedTask, setSelectedTask] = useState<TimerTask | null>(null);
+  const { state, startTimer, abandonTimer, extendTimer, setTask } = useTimer();
   const [strictMode, setStrictMode] = useState(false);
   const [showFlipClock, setShowFlipClock] = useState(false);
   const [strictFailures, setStrictFailures] = useState(0);
@@ -290,7 +276,7 @@ export default function FocusPage() {
             <label className="text-xs font-semibold uppercase tracking-wider text-zinc-600 mb-2 block">
               Focusing On
             </label>
-            <TaskPicker onSelect={setSelectedTask} />
+            <TaskPicker onSelect={setTask} />
           </div>
 
           {/* Strict Mode Toggle */}

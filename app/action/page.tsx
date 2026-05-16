@@ -52,7 +52,17 @@ export default function ActionPage() {
     }
   }, [statusFilter]);
 
-  useEffect(() => { loadTasks(); }, [loadTasks]);
+  useEffect(() => { 
+    loadTasks(); 
+    
+    const handleRefresh = () => {
+      loadTasks();
+      setStatsTrigger((c) => c + 1);
+    };
+    
+    window.addEventListener('dayly-refresh-tasks', handleRefresh);
+    return () => window.removeEventListener('dayly-refresh-tasks', handleRefresh);
+  }, [loadTasks]);
 
   // Load summary strip data
   useEffect(() => {

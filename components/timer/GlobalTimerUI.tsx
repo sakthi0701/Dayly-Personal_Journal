@@ -32,7 +32,7 @@ export default function GlobalTimerUI() {
   const {
     state, remaining,
     pauseTimer, resumeTimer, abandonTimer,
-    startTimer, completeTimer, extendTimer,
+    startTimer, completeTimer, extendTimer, setDuration
   } = useTimer();
   const pathname = usePathname();
   const { pipWindow, isPiPOpen, closePiP, setPiPWindow, isSupported } = usePiP();
@@ -150,8 +150,18 @@ export default function GlobalTimerUI() {
               <h2 className="text-2xl font-bold mb-2">Session Complete!</h2>
               <div className="flex flex-col gap-2 mt-6">
                 <button onClick={() => extendTimer(1)} className="px-6 py-3 bg-indigo-600 rounded-xl font-bold">Extend +1 min</button>
-                <button onClick={() => completeTimer()} className="px-6 py-3 bg-emerald-600 rounded-xl font-bold">Take Break</button>
-                <button onClick={() => { completeTimer(); startTimer(state.task, state.strictMode); }} className="px-6 py-3 bg-zinc-800 rounded-xl">Skip Break</button>
+                <button onClick={async () => { 
+                  await completeTimer(); 
+                  window.dispatchEvent(new CustomEvent('dayly-refresh-tasks'));
+                  setDuration(5); 
+                  startTimer(null, false); 
+                }} className="px-6 py-3 bg-emerald-600 rounded-xl font-bold">Take Break</button>
+                <button onClick={async () => { 
+                  await completeTimer(); 
+                  window.dispatchEvent(new CustomEvent('dayly-refresh-tasks'));
+                  setDuration(25); 
+                  startTimer(state.task, state.strictMode); 
+                }} className="px-6 py-3 bg-zinc-800 rounded-xl">Skip Break</button>
               </div>
            </div>
         </div>

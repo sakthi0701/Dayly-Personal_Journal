@@ -260,7 +260,7 @@ export default function GoalCountdownWidget() {
                     </div>
                     <div className="flex justify-between mt-1.5">
                       <span className="text-[10px] text-zinc-600">Start</span>
-                      <span className={`text-[10px] font-medium ${colors.text}`}>{goal.progress_pct}% of time elapsed</span>
+                      <span className={`text-[10px] font-medium ${colors.text}`}>{goal.progress_pct}% tasks completed</span>
                       <span className="text-[10px] text-zinc-600">Deadline</span>
                     </div>
                   </>
