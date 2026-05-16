@@ -1,7 +1,24 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { Plus, Trash2, Check, Clock, AlertTriangle, ChevronDown, Flame, Bell } from 'lucide-react';
+import { Plus, Trash2, Check, Clock, AlertTriangle, ChevronDown, Flame, Bell, GripVertical } from 'lucide-react';
+import {
+  DndContext,
+  closestCenter,
+  KeyboardSensor,
+  PointerSensor,
+  useSensor,
+  useSensors,
+  DragEndEvent,
+} from '@dnd-kit/core';
+import {
+  arrayMove,
+  SortableContext,
+  sortableKeyboardCoordinates,
+  verticalListSortingStrategy,
+  useSortable,
+} from '@dnd-kit/sortable';
+import { CSS } from '@dnd-kit/utilities';
 
 interface PressureTask {
   id: string;
@@ -10,6 +27,7 @@ interface PressureTask {
   deadline: string | null;
   estimated_minutes: number | null;
   status: 'todo' | 'done' | 'snoozed' | 'rescheduled';
+  sort_order: number;
   completed_at: string | null;
   created_at: string;
 }
@@ -161,6 +179,22 @@ function PressureTaskCard({
   const cfg = PRIORITY_CONFIG[task.priority as keyof typeof PRIORITY_CONFIG] ?? PRIORITY_CONFIG[3];
   const isDone = task.status === 'done';
 
+  const {
+    attributes,
+    listeners,
+    setNodeRef,
+    transform,
+    transition,
+    isDragging,
+  } = useSortable({ id: task.id, disabled: isDone });
+
+  const style = {
+    transform: CSS.Transform.toString(transform),
+    transition,
+    zIndex: isDragging ? 50 : 'auto',
+    opacity: isDragging ? 0.5 : 1,
+  };
+
   useEffect(() => {
     const handler = (e: MouseEvent) => {
       if (ref.current && !ref.current.contains(e.target as Node)) setShowActions(false);
@@ -171,12 +205,25 @@ function PressureTaskCard({
 
   return (
     <div
+      ref={setNodeRef}
+      style={style}
       className={`flex items-start gap-3 px-4 py-3.5 rounded-xl border transition-all ${
         isDone
           ? 'bg-zinc-900/30 border-zinc-800/50 opacity-60'
-          : `${cfg.bg} ${cfg.border}`
+          : `${cfg.bg} ${cfg.border} ${isDragging ? 'shadow-2xl shadow-black/50 border-indigo-500/50' : ''}`
       }`}
     >
+      {/* Drag handle */}
+      {!isDone && (
+        <button
+          {...attributes}
+          {...listeners}
+          className="mt-1 text-zinc-600 hover:text-zinc-300 cursor-grab active:cursor-grabbing shrink-0"
+        >
+          <GripVertical className="w-4 h-4" />
+        </button>
+      )}
+
       {/* Complete button */}
       <button
         onClick={() => onStatusChange(task.id, isDone ? 'todo' : 'done')}
@@ -276,6 +323,35 @@ export default function PressurePlan() {
   const showToast = (msg: string) => {
     setToast(msg);
     setTimeout(() => setToast(null), 2500);
+  };
+
+  const sensors = useSensors(
+    useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+    useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
+  );
+
+  const handleDragEnd = async (event: DragEndEvent) => {
+    const { active, over } = event;
+    if (over && active.id !== over.id) {
+      setTasks((items) => {
+        const oldIndex = items.findIndex((i) => i.id === active.id);
+        const newIndex = items.findIndex((i) => i.id === over.id);
+        const newItems = arrayMove(items, oldIndex, newIndex);
+        
+        // Save new order to API
+        const updates = newItems
+          .filter(t => t.status !== 'done')
+          .map((t, index) => ({ id: t.id, sort_order: index }));
+        
+        fetch('/api/pressure-tasks/reorder', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ updates }),
+        }).catch(() => showToast('Failed to save order'));
+
+        return newItems;
+      });
+    }
   };
 
   const load = useCallback(async () => {
@@ -398,16 +474,27 @@ export default function PressurePlan() {
           </p>
         </div>
       ) : (
-        <div className="space-y-2">
-          {activeTasks.map((task) => (
-            <PressureTaskCard
-              key={task.id}
-              task={task}
-              onStatusChange={handleStatusChange}
-              onDelete={handleDelete}
-            />
-          ))}
-        </div>
+        <DndContext
+          sensors={sensors}
+          collisionDetection={closestCenter}
+          onDragEnd={handleDragEnd}
+        >
+          <SortableContext
+            items={activeTasks.map((t) => t.id)}
+            strategy={verticalListSortingStrategy}
+          >
+            <div className="space-y-2">
+              {activeTasks.map((task) => (
+                <PressureTaskCard
+                  key={task.id}
+                  task={task}
+                  onStatusChange={handleStatusChange}
+                  onDelete={handleDelete}
+                />
+              ))}
+            </div>
+          </SortableContext>
+        </DndContext>
       )}
 
       {/* Done section */}

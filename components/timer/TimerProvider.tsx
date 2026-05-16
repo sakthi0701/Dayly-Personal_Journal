@@ -287,14 +287,14 @@ export function TimerProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const abandonTimer = useCallback(async (failedReason = 'manual_abandon') => {
-    const { blockId, elapsed } = stateRef.current;
+    const { blockId, elapsed, duration } = stateRef.current;
     dispatch({ type: 'ABANDON' });
     if (!blockId) return;
     try {
       await fetch('/api/timer/abandon', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ blockId, duration: elapsed, failed_reason: failedReason }),
+        body: JSON.stringify({ blockId, duration: elapsed, total_duration: duration, failed_reason: failedReason }),
       });
     } catch (err) {
       console.error('Failed to abandon timer:', err);

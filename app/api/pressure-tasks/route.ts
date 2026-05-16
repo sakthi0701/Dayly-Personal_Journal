@@ -10,6 +10,7 @@ export async function GET(request: Request) {
     let query = supabase
       .from('pressure_tasks')
       .select('*')
+      .order('sort_order', { ascending: true })
       .order('priority', { ascending: true })
       .order('deadline', { ascending: true, nullsFirst: false });
 

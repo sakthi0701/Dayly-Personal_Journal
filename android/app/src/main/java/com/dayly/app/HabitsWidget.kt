@@ -12,7 +12,8 @@ import org.json.JSONException
 class HabitsWidget : AppWidgetProvider() {
 
     companion object {
-        private const val PREFS_FILE = "DaylyCache"
+        // ⚠️ Must match Capacitor v4+ preferences file name
+        private const val PREFS_FILE = "_capacitor_storage_plugin"
         private const val KEY_HABITS = "widget_habits"
     }
 
@@ -77,7 +78,7 @@ class HabitsWidget : AppWidgetProvider() {
             action = "com.dayly.WIDGET_UPDATE"
         }
         val pendingRefresh = android.app.PendingIntent.getBroadcast(
-            context, widgetId, refreshIntent, android.app.PendingIntent.FLAG_UPDATE_CURRENT or android.app.PendingIntent.FLAG_IMMUTABLE
+            context, widgetId + 100000, refreshIntent, android.app.PendingIntent.FLAG_UPDATE_CURRENT or android.app.PendingIntent.FLAG_IMMUTABLE
         )
         views.setOnClickPendingIntent(R.id.widget_refresh_button, pendingRefresh)
 

@@ -7,11 +7,11 @@ export async function GET(request: Request) {
     const tagId = searchParams.get('tag');
     const statusFilter = searchParams.get('status');
 
-    // Fetch top-level tasks (no parent) with their tags
-    // If tagId is present, we use an inner join to correctly filter the parents
+    // Only join tags when filtering by tag (inner join needed for correct filtering).
+    // For the normal list view we skip tag/time_blocks joins for speed.
     const selectStr = tagId
-      ? `*, subtasks:tasks!parent_task_id(*), task_tags!inner(tag_id, tags(id, name)), time_blocks(duration, mode, completed)`
-      : `*, subtasks:tasks!parent_task_id(*), task_tags(tags(id, name)), time_blocks(duration, mode, completed)`;
+      ? `*, subtasks:tasks!parent_task_id(*), task_tags!inner(tag_id, tags(id, name))`
+      : `*, subtasks:tasks!parent_task_id(*), task_tags(tags(id, name))`;
 
     let query = supabase
       .from('tasks')

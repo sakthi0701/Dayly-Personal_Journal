@@ -38,8 +38,9 @@
 
         <ImageView
             android:id="@+id/widget_refresh_button"
-            android:layout_width="24dp"
-            android:layout_height="24dp"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:padding="12dp"
             android:src="@android:drawable/ic_popup_sync"
             android:contentDescription="Refresh"
             android:tint="#FFFFFF" />
