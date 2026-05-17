@@ -1,20 +1,20 @@
 package com.dayly.app
 
+import android.app.PendingIntent
 import android.appwidget.AppWidgetManager
 import android.appwidget.AppWidgetProvider
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.net.Uri
+import android.view.View
 import android.widget.RemoteViews
-import org.json.JSONArray
-import org.json.JSONException
 
 class TasksWidget : AppWidgetProvider() {
 
     companion object {
-        // ⚠️ Must match Capacitor Preferences plugin SharedPreferences file
-        private const val PREFS_FILE = "CapacitorStorage"
-        private const val KEY_TASKS = "widget_tasks"
+        private const val PREFS_FILE = "DaylyCache"
+        private const val ACTION_UPDATE = "com.dayly.WIDGET_UPDATE"
     }
 
     override fun onUpdate(
@@ -29,12 +29,18 @@ class TasksWidget : AppWidgetProvider() {
 
     override fun onReceive(context: Context, intent: Intent) {
         super.onReceive(context, intent)
-        if (intent.action == "com.dayly.WIDGET_UPDATE") {
+        if (intent.action == ACTION_UPDATE || intent.action == AppWidgetManager.ACTION_APPWIDGET_UPDATE) {
             val manager = AppWidgetManager.getInstance(context)
             val ids = manager.getAppWidgetIds(
                 ComponentName(context, TasksWidget::class.java)
             )
-            onUpdate(context, manager, ids)
+            // Notify the list view that the data has changed
+            manager.notifyAppWidgetViewDataChanged(ids, R.id.widget_tasks_list)
+            
+            // Re-render everything to update the timer header if needed
+            for (id in ids) {
+                updateWidget(context, manager, id)
+            }
         }
     }
 
@@ -44,50 +50,53 @@ class TasksWidget : AppWidgetProvider() {
         widgetId: Int
     ) {
         val prefs = context.getSharedPreferences(PREFS_FILE, Context.MODE_PRIVATE)
-        // Capacitor Preferences stores values with plain keys (no prefix)
-        val tasksJsonStr = prefs.getString(KEY_TASKS, null)
         
-        val views = RemoteViews(context.packageName, R.layout.widget_tasks)
-        views.removeAllViews(R.id.widget_tasks_container)
+        val timerStatus = prefs.getString("widget_timer_status", "idle")
+        val timerTitle = prefs.getString("widget_timer_title", "")
+        val timerRemaining = prefs.getString("widget_timer_remaining", "")
 
-        if (tasksJsonStr != null) {
-            try {
-                val jsonArray = JSONArray(tasksJsonStr)
-                for (i in 0 until jsonArray.length()) {
-                    val taskObj = jsonArray.getJSONObject(i)
-                    val title = taskObj.optString("title", "Unknown Task")
-                    val progress = taskObj.optInt("progress", 0)
-                    
-                    val itemView = RemoteViews(context.packageName, R.layout.widget_task_item)
-                    itemView.setTextViewText(R.id.task_title, title)
-                    itemView.setProgressBar(R.id.task_progress, 100, progress, false)
-                    
-                    views.addView(R.id.widget_tasks_container, itemView)
-                }
-            } catch (e: JSONException) {
-                e.printStackTrace()
-            }
+        val views = RemoteViews(context.packageName, R.layout.widget_tasks)
+
+        // ── Active Timer Header ──────────────────────────────────────────
+        // Note: Using widget_tasks_container ID from XML for the timer section
+        if (timerStatus == "running" || timerStatus == "paused") {
+            val statusIcon = if (timerStatus == "paused") "⏸️" else "⏳"
+            views.setViewVisibility(R.id.widget_tasks_container, View.VISIBLE)
+            views.setTextViewText(R.id.widget_timer_text, "$statusIcon $timerTitle ($timerRemaining)")
         } else {
-            // Mock data if not synced yet
-            val mockTasks = listOf("FCC Stack", "Solar Irradiance", "Exploration Lab", "Threads - Agentic Skills Upgrade", "Medical LLM")
-            for (title in mockTasks) {
-                val itemView = RemoteViews(context.packageName, R.layout.widget_task_item)
-                itemView.setTextViewText(R.id.task_title, title)
-                itemView.setProgressBar(R.id.task_progress, 100, 0, false)
-                views.addView(R.id.widget_tasks_container, itemView)
-            }
+            views.setViewVisibility(R.id.widget_tasks_container, View.GONE)
         }
 
-        // ── Refresh: explicit ComponentName required for Android 12+ broadcast delivery ──
-        val refreshIntent = Intent("com.dayly.WIDGET_UPDATE").apply {
+        // ── List View Setup ──────────────────────────────────────────────
+        val serviceIntent = Intent(context, TasksWidgetService::class.java).apply {
+            putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, widgetId)
+            data = Uri.parse(toUri(Intent.URI_INTENT_SCHEME))
+        }
+        views.setRemoteAdapter(R.id.widget_tasks_list, serviceIntent)
+        views.setEmptyView(R.id.widget_tasks_list, R.id.widget_empty_view)
+
+        // ── Action: Open App ──────────────────────────────────────────────────
+        val launchIntent = context.packageManager.getLaunchIntentForPackage(context.packageName)
+        if (launchIntent != null) {
+            val pendingLaunch = PendingIntent.getActivity(
+                context, widgetId, launchIntent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
+            // Template for list items
+            views.setPendingIntentTemplate(R.id.widget_tasks_list, pendingLaunch)
+            // Root click
+            views.setOnClickPendingIntent(R.id.widget_root, pendingLaunch)
+        }
+
+        // ── Action: Refresh ───────────────────────────────────────────────────
+        val refreshIntent = Intent(ACTION_UPDATE).apply {
             component = ComponentName(context, TasksWidget::class.java)
         }
-        val pendingRefresh = android.app.PendingIntent.getBroadcast(
+        val pendingRefresh = PendingIntent.getBroadcast(
             context, widgetId + 200000, refreshIntent,
-            android.app.PendingIntent.FLAG_UPDATE_CURRENT or android.app.PendingIntent.FLAG_IMMUTABLE
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
         views.setOnClickPendingIntent(R.id.widget_refresh_button, pendingRefresh)
-        views.setOnClickPendingIntent(R.id.widget_root, pendingRefresh)
 
         appWidgetManager.updateAppWidget(widgetId, views)
     }

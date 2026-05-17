@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { syncTimerToWidget } from '../cache';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -327,6 +328,11 @@ if (typeof window !== 'undefined') {
       localStorage.setItem(LS_KEY, JSON.stringify(stateToSave));
     } catch {
       // ignore quota exceeded
+    }
+
+    // Sync to Android Widget (Capacitor Preferences)
+    if (state.status !== 'idle' || state.task) {
+      syncTimerToWidget(state.status, state.task?.title ?? null, state.remaining, state.isBreak);
     }
   });
 }

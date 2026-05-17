@@ -1,5 +1,6 @@
 package com.dayly.app
 
+import android.app.PendingIntent
 import android.appwidget.AppWidgetManager
 import android.appwidget.AppWidgetProvider
 import android.content.ComponentName
@@ -12,8 +13,7 @@ import org.json.JSONException
 class HabitsWidget : AppWidgetProvider() {
 
     companion object {
-        // ⚠️ Must match Capacitor Preferences plugin SharedPreferences file
-        private const val PREFS_FILE = "CapacitorStorage"
+        private const val PREFS_FILE = "DaylyCache"
         private const val KEY_HABITS = "widget_habits"
     }
 
@@ -44,7 +44,6 @@ class HabitsWidget : AppWidgetProvider() {
         widgetId: Int
     ) {
         val prefs = context.getSharedPreferences(PREFS_FILE, Context.MODE_PRIVATE)
-        // Capacitor Preferences stores values with plain keys (no prefix)
         val habitsJsonStr = prefs.getString(KEY_HABITS, null)
         
         val views = RemoteViews(context.packageName, R.layout.widget_habits)
@@ -74,16 +73,25 @@ class HabitsWidget : AppWidgetProvider() {
             }
         }
 
-        // ── Refresh: explicit ComponentName required for Android 12+ broadcast delivery ──
+        // ── Action: Open App ──────────────────────────────────────────────────
+        val launchIntent = context.packageManager.getLaunchIntentForPackage(context.packageName)
+        if (launchIntent != null) {
+            val pendingLaunch = PendingIntent.getActivity(
+                context, widgetId + 300000, launchIntent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
+            views.setOnClickPendingIntent(R.id.widget_root, pendingLaunch)
+        }
+
+        // ── Action: Refresh ───────────────────────────────────────────────────
         val refreshIntent = Intent("com.dayly.WIDGET_UPDATE").apply {
             component = ComponentName(context, HabitsWidget::class.java)
         }
-        val pendingRefresh = android.app.PendingIntent.getBroadcast(
-            context, widgetId + 400000, refreshIntent, // Unique offset for HabitsWidget
-            android.app.PendingIntent.FLAG_UPDATE_CURRENT or android.app.PendingIntent.FLAG_IMMUTABLE
+        val pendingRefresh = PendingIntent.getBroadcast(
+            context, widgetId + 400000, refreshIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
         views.setOnClickPendingIntent(R.id.widget_refresh_button, pendingRefresh)
-        views.setOnClickPendingIntent(R.id.widget_root, pendingRefresh)
 
         appWidgetManager.updateAppWidget(widgetId, views)
     }

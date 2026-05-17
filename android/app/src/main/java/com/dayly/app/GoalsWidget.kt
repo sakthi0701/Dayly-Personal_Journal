@@ -1,5 +1,6 @@
 package com.dayly.app
 
+import android.app.PendingIntent
 import android.appwidget.AppWidgetManager
 import android.appwidget.AppWidgetProvider
 import android.content.ComponentName
@@ -12,8 +13,7 @@ import org.json.JSONException
 class GoalsWidget : AppWidgetProvider() {
 
     companion object {
-        // ⚠️ Must match Capacitor Preferences plugin SharedPreferences file
-        private const val PREFS_FILE = "CapacitorStorage"
+        private const val PREFS_FILE = "DaylyCache"
         private const val KEY_GOALS = "widget_goals"
     }
 
@@ -44,7 +44,6 @@ class GoalsWidget : AppWidgetProvider() {
         widgetId: Int
     ) {
         val prefs = context.getSharedPreferences(PREFS_FILE, Context.MODE_PRIVATE)
-        // Capacitor Preferences stores values with plain keys (no prefix)
         val goalsJsonStr = prefs.getString(KEY_GOALS, null)
         
         val views = RemoteViews(context.packageName, R.layout.widget_goals)
@@ -85,16 +84,25 @@ class GoalsWidget : AppWidgetProvider() {
             }
         }
 
-        // ── Refresh: explicit ComponentName required for Android 12+ broadcast delivery ──
+        // ── Action: Open App ──────────────────────────────────────────────────
+        val launchIntent = context.packageManager.getLaunchIntentForPackage(context.packageName)
+        if (launchIntent != null) {
+            val pendingLaunch = PendingIntent.getActivity(
+                context, widgetId + 700000, launchIntent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
+            views.setOnClickPendingIntent(R.id.widget_root, pendingLaunch)
+        }
+
+        // ── Action: Refresh ───────────────────────────────────────────────────
         val refreshIntent = Intent("com.dayly.WIDGET_UPDATE").apply {
             component = ComponentName(context, GoalsWidget::class.java)
         }
-        val pendingRefresh = android.app.PendingIntent.getBroadcast(
-            context, widgetId + 500000, refreshIntent, // Unique offset for GoalsWidget
-            android.app.PendingIntent.FLAG_UPDATE_CURRENT or android.app.PendingIntent.FLAG_IMMUTABLE
+        val pendingRefresh = PendingIntent.getBroadcast(
+            context, widgetId + 800000, refreshIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
         )
         views.setOnClickPendingIntent(R.id.widget_refresh_button, pendingRefresh)
-        views.setOnClickPendingIntent(R.id.widget_root, pendingRefresh)
 
         appWidgetManager.updateAppWidget(widgetId, views)
     }

@@ -107,6 +107,10 @@
                 android:resource="@xml/goals_widget_info" />
         </receiver>
 
+        <service
+            android:name=".TasksWidgetService"
+            android:permission="android.permission.BIND_REMOTEVIEWS" />
+
         <!-- Reschedule notifications after device reboot -->
         <receiver
             android:name=".BootReceiver"

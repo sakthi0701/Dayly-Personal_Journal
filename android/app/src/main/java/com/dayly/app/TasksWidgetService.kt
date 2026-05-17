@@ -2,7 +2,6 @@ package com.dayly.app
 
 import android.content.Context
 import android.content.Intent
-import android.view.View
 import android.widget.RemoteViews
 import android.widget.RemoteViewsService
 import org.json.JSONArray
@@ -17,8 +16,11 @@ class TasksWidgetService : RemoteViewsService() {
 class TasksRemoteViewsFactory(private val context: Context) : RemoteViewsService.RemoteViewsFactory {
 
     private var tasks: List<TaskItem> = listOf()
-    private const val PREFS_FILE = "DaylyCache"
-    private const val KEY_TASKS = "widget_tasks"
+
+    companion object {
+        private const val PREFS_FILE = "DaylyCache"
+        private const val KEY_TASKS = "widget_tasks"
+    }
 
     data class TaskItem(val title: String, val progress: Int, val isPressure: Boolean)
 
@@ -43,6 +45,10 @@ class TasksRemoteViewsFactory(private val context: Context) : RemoteViewsService
             } catch (e: JSONException) {
                 e.printStackTrace()
             }
+        } else {
+            // Mock data so the widget isn't empty on first install
+            newList.add(TaskItem("Welcome to Dayly", 0, false))
+            newList.add(TaskItem("Sync from app", 0, false))
         }
         tasks = newList
     }
@@ -69,6 +75,7 @@ class TasksRemoteViewsFactory(private val context: Context) : RemoteViewsService
         // Fill-in Intent for item click (handled by PendingIntentTemplate in Provider)
         val fillInIntent = Intent()
         rv.setOnClickFillInIntent(R.id.task_title, fillInIntent)
+        rv.setOnClickFillInIntent(R.id.task_progress, fillInIntent)
 
         return rv
     }

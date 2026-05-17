@@ -51,5 +51,35 @@
         android:id="@+id/widget_tasks_container"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:orientation="vertical" />
+        android:orientation="vertical"
+        android:visibility="gone"
+        android:layout_marginBottom="8dp"
+        android:background="#22FFFFFF"
+        android:padding="8dp">
+        <TextView
+            android:id="@+id/widget_timer_text"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:textColor="#FFD700"
+            android:textStyle="bold"
+            android:textSize="14sp" />
+    </LinearLayout>
+
+    <ListView
+        android:id="@+id/widget_tasks_list"
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:divider="@null"
+        android:dividerHeight="0dp" />
+
+    <TextView
+        android:id="@+id/widget_empty_view"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="No tasks for today."
+        android:textColor="#88FFFFFF"
+        android:textSize="14sp"
+        android:gravity="center"
+        android:visibility="gone" />
 </LinearLayout>

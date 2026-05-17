@@ -11,6 +11,7 @@
  */
 
 import { Preferences } from '@capacitor/preferences';
+import { calculateLevel } from './gamification';
 
 interface CacheEntry<T> {
   data: T;
@@ -211,7 +212,7 @@ export async function removeFromOfflineQueue(id: string): Promise<void> {
  * inside Preferences so the native Android widgets can parse them easily.
  */
 export async function syncWidgetsToNative(
-  tasks: Array<{ title: string; progress: number }>,
+  tasks: Array<{ title: string; progress: number; isPressure?: boolean }>,
   habits: Array<{ title: string }>,
   goals: Array<{ title: string; icon: string; progress: number }>
 ): Promise<void> {
@@ -219,12 +220,30 @@ export async function syncWidgetsToNative(
     await Preferences.set({ key: 'widget_tasks', value: JSON.stringify(tasks) });
     await Preferences.set({ key: 'widget_habits', value: JSON.stringify(habits) });
     await Preferences.set({ key: 'widget_goals', value: JSON.stringify(goals) });
-
-    if (typeof window !== 'undefined' && (window as any).Capacitor?.isNativePlatform()) {
-      // Native widget handles its own update schedules, but data is now ready.
-    }
   } catch (e) {
     console.error('[WidgetSync] Failed to sync widgets to native preferences', e);
+  }
+}
+
+/**
+ * Syncs active timer state to native preferences for display on Home Screen widgets.
+ */
+export async function syncTimerToWidget(
+  status: 'idle' | 'running' | 'paused' | 'completed',
+  taskTitle: string | null,
+  remainingSeconds: number,
+  isBreak: boolean = false
+): Promise<void> {
+  try {
+    const mins = Math.floor(remainingSeconds / 60);
+    const secs = remainingSeconds % 60;
+    const timeStr = `${mins}:${secs.toString().padStart(2, '0')}`;
+
+    await Preferences.set({ key: 'widget_timer_status', value: status });
+    await Preferences.set({ key: 'widget_timer_title', value: isBreak ? 'Break Time' : (taskTitle ?? 'Focus Session') });
+    await Preferences.set({ key: 'widget_timer_remaining', value: timeStr });
+  } catch (e) {
+    console.error('[WidgetSync] Timer sync failed', e);
   }
 }
 
@@ -236,17 +255,28 @@ export async function triggerWidgetDataSync(): Promise<void> {
   if (typeof window === 'undefined') return; // Client only
   
   try {
-    const [tasksRes, habitsRes, goalsRes, statsRes] = await Promise.all([
+    const [tasksRes, pressureRes, habitsRes, goalsRes, statsRes] = await Promise.all([
       fetch('/api/tasks?status=todo').then(r => r.json()).catch(() => ({ tasks: [] })),
+      fetch('/api/pressure-tasks?filter=active').then(r => r.json()).catch(() => ({ tasks: [] })),
       fetch('/api/habits').then(r => r.json()).catch(() => ({ habits: [] })),
       fetch('/api/goals').then(r => r.json()).catch(() => ({ goals: [] })),
       fetch('/api/stats/user').then(r => r.json()).catch(() => null)
     ]);
 
-    const tasks = (tasksRes.tasks ?? []).slice(0, 5).map((t: any) => ({
-      title: t.title,
-      progress: t.status === 'in-progress' ? 50 : 0
+    // Combined Task List: Pressure Tasks (max 2) + Normal Tasks
+    const pTasks = (pressureRes.tasks ?? []).slice(0, 2).map((t: any) => ({
+      title: `🔥 ${t.title}`,
+      progress: 0,
+      isPressure: true
     }));
+
+    const nTasks = (tasksRes.tasks ?? []).slice(0, 5 - pTasks.length).map((t: any) => ({
+      title: t.title,
+      progress: t.status === 'in-progress' ? 50 : 0,
+      isPressure: false
+    }));
+
+    const combinedTasks = [...pTasks, ...nTasks];
 
     const habits = (habitsRes.habits ?? []).slice(0, 3).map((h: any) => ({
       title: h.name
@@ -258,13 +288,18 @@ export async function triggerWidgetDataSync(): Promise<void> {
       progress: Math.min(100, Math.round(((g.current_value || 0) / (g.target_value || 1)) * 100))
     }));
 
-    await syncWidgetsToNative(tasks, habits, goals);
+    await syncWidgetsToNative(combinedTasks, habits, goals);
 
-    // Sync Sun Warrior stats so SunWarriorWidget can display live streak/XP
+    // Sync Sun Warrior stats so SunWarriorWidget can display live streak/XP/Level
     if (statsRes?.stats) {
-      const { streak_days, xp } = statsRes.stats;
+      const { streak_days, xp, current_avatar_state } = statsRes.stats;
+      const level = calculateLevel(xp);
+
       await Preferences.set({ key: 'streak_days', value: String(streak_days ?? 0) });
       await Preferences.set({ key: 'xp', value: String(xp ?? 0) });
+      await Preferences.set({ key: 'avatar_state', value: current_avatar_state || 'dormant' });
+      await Preferences.set({ key: 'level_title', value: level.title });
+      await Preferences.set({ key: 'level_progress', value: String(Math.round(level.progressPercent)) });
     }
   } catch (e) {
     console.error('[WidgetSync] Data fetch failed', e);
