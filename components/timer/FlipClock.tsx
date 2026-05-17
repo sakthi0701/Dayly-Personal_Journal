@@ -59,7 +59,14 @@ interface FlipClockProps {
 }
 
 export default function FlipClock({ onExit }: FlipClockProps) {
-  const { remaining, state, pauseTimer, resumeTimer, extendTimer } = useTimer();
+  const remaining = useTimer(state => state.remaining);
+  const mode = useTimer(state => state.mode);
+  const task = useTimer(state => state.task);
+  const status = useTimer(state => state.status);
+  const pauseTimer = useTimer(state => state.pauseTimer);
+  const resumeTimer = useTimer(state => state.resumeTimer);
+  const extendTimer = useTimer(state => state.extendTimer);
+  const state = { mode, task, status };
 
   const totalSeconds = state.mode === 'pomodoro' ? remaining : remaining;
   const h = Math.floor(totalSeconds / 3600);

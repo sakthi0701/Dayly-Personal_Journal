@@ -22,7 +22,9 @@ interface PressureTask {
 }
 
 function TaskPicker({ onSelect }: { onSelect: (task: TimerTask | null) => void }) {
-  const { state } = useTimer();
+  const status = useTimer(state => state.status);
+  const task = useTimer(state => state.task);
+  const state = { status, task };
   const [tasks, setTasks] = useState<TimerTask[]>([]);
   const [pressureTasks, setPressureTasks] = useState<PressureTask[]>([]);
   const [open, setOpen] = useState(false);
@@ -165,7 +167,12 @@ function TaskPicker({ onSelect }: { onSelect: (task: TimerTask | null) => void }
 const DURATIONS = [15, 20, 25, 30, 45, 60];
 
 function DurationPicker() {
-  const { state, setDuration, extendTimer } = useTimer();
+  const duration = useTimer(state => state.duration);
+  const status = useTimer(state => state.status);
+  const mode = useTimer(state => state.mode);
+  const setDuration = useTimer(state => state.setDuration);
+  const extendTimer = useTimer(state => state.extendTimer);
+  const state = { duration, status, mode };
   const currentMinutes = Math.round(state.duration / 60);
   const isRunning = state.status === 'running' || state.status === 'paused';
 
@@ -204,7 +211,10 @@ function DurationPicker() {
 // ─── Mode Toggle ─────────────────────────────────────────────────────────────
 
 function ModeToggle() {
-  const { state, setMode } = useTimer();
+  const status = useTimer(state => state.status);
+  const mode = useTimer(state => state.mode);
+  const setMode = useTimer(state => state.setMode);
+  const state = { status, mode };
   const modes: { value: TimerMode; label: string }[] = [
     { value: 'pomodoro', label: '🍅 Pomodoro' },
     { value: 'stopwatch', label: '⏱ Stopwatch' },
@@ -233,7 +243,19 @@ function ModeToggle() {
 // ─── Focus Page ───────────────────────────────────────────────────────────────
 
 export default function FocusPage() {
-  const { state, startTimer, abandonTimer, extendTimer, setTask, setNotToDoItems, completeTimer } = useTimer();
+  const status = useTimer(state => state.status);
+  const mode = useTimer(state => state.mode);
+  const task = useTimer(state => state.task);
+  const notToDoItems = useTimer(state => state.notToDoItems);
+  const isBreak = useTimer(state => state.isBreak);
+  const elapsed = useTimer(state => state.status === 'completed' ? state.elapsed : 0);
+  const startTimer = useTimer(state => state.startTimer);
+  const abandonTimer = useTimer(state => state.abandonTimer);
+  const extendTimer = useTimer(state => state.extendTimer);
+  const setTask = useTimer(state => state.setTask);
+  const setNotToDoItems = useTimer(state => state.setNotToDoItems);
+  const completeTimer = useTimer(state => state.completeTimer);
+  const state = { status, mode, task, notToDoItems, isBreak, elapsed };
   const [strictMode, setStrictMode] = useState(false);
   const [showFlipClock, setShowFlipClock] = useState(false);
   const [strictFailures, setStrictFailures] = useState(0);
@@ -244,15 +266,17 @@ export default function FocusPage() {
   const [reviewResult, setReviewResult] = useState<{ xpEarned: number; xpDeducted: number; cleanSession: boolean } | null>(null);
   const [isSubmittingReview, setIsSubmittingReview] = useState(false);
 
-  // Track completion trigger — we want to show review sheet when session completes
+  // Track completion trigger — we want to show review sheet when work session completes
   const prevStatus = useRef(state.status);
   useEffect(() => {
     if (prevStatus.current === 'running' && state.status === 'completed') {
-      // Session just completed — show review
-      setShowReviewSheet(true);
+      if (!state.isBreak) {
+        // Work session just completed — show review
+        setShowReviewSheet(true);
+      }
     }
     prevStatus.current = state.status;
-  }, [state.status]);
+  }, [state.status, state.isBreak]);
 
   // Notification permission
   useEffect(() => {
@@ -288,9 +312,9 @@ export default function FocusPage() {
     return () => document.removeEventListener('visibilitychange', handleVisibilityChange);
   }, [strictMode, state.status, abandonTimer]);
 
-  // Reset failures on new session
+  // Reset failures and dismiss review sheet on new session or idle
   useEffect(() => {
-    if (state.status === 'idle') {
+    if (state.status === 'idle' || state.status === 'running') {
       setStrictFailures(0);
       setSelectedNotToDos([]);
       setShowReviewSheet(false);
@@ -307,12 +331,11 @@ export default function FocusPage() {
   // Handle "Start Session" with guard for strict mode
   const handleStart = () => {
     if (strictMode && state.mode === 'pomodoro' && selectedNotToDos.length === 0) {
-      // Show a brief warning — we'll use a local state flag
       setShowStrictWarning(true);
       setTimeout(() => setShowStrictWarning(false), 3000);
       return;
     }
-    startTimer(state.task, strictMode, selectedNotToDos);
+    startTimer(state.task, strictMode, selectedNotToDos, false);
   };
   const [showStrictWarning, setShowStrictWarning] = useState(false);
 
@@ -465,3 +488,4 @@ export default function FocusPage() {
     </div>
   );
 }
+

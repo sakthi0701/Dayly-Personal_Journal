@@ -10,7 +10,9 @@ function formatTime(seconds: number) {
 }
 
 export default function StopwatchTimer() {
-  const { state, remaining } = useTimer();
+  const remaining = useTimer(state => state.remaining);
+  const task = useTimer(state => state.task);
+  const state = { task };
 
   return (
     <div className="flex flex-col items-center gap-3">

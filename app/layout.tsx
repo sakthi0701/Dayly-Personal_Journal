@@ -5,7 +5,6 @@ import Sidebar from "@/components/layout/Sidebar";
 import { SidebarProvider } from "@/components/layout/SidebarProvider";
 import LockProvider from "@/components/auth/LockProvider";
 import MainContentWrapper from "@/components/layout/MainContentWrapper";
-import { TimerProvider } from "@/components/timer/TimerProvider";
 import GlobalTimerUI from "@/components/timer/GlobalTimerUI";
 
 const inter = Inter({ subsets: ["latin"] });
@@ -35,20 +34,18 @@ export default function RootLayout({
     <html lang="en" suppressHydrationWarning>
       <body className={`${inter.className} min-h-screen bg-zinc-950 text-white`}>
         <LockProvider>
-          <TimerProvider>
-            <SidebarProvider>
-              {/* Persistent Left Sidebar */}
-              <Sidebar />
-              {/* Main content shifts based on sidebar collapsed state */}
-              <MainContentWrapper>
-                {children}
-              </MainContentWrapper>
-              {/* Global floating timer UI — persists across all pages */}
-              <GlobalTimerUI />
-              <NotificationManager />
-              <WidgetSync />
-            </SidebarProvider>
-          </TimerProvider>
+          <SidebarProvider>
+            {/* Persistent Left Sidebar */}
+            <Sidebar />
+            {/* Main content shifts based on sidebar collapsed state */}
+            <MainContentWrapper>
+              {children}
+            </MainContentWrapper>
+            {/* Global floating timer UI — persists across all pages */}
+            <GlobalTimerUI />
+            <NotificationManager />
+            <WidgetSync />
+          </SidebarProvider>
         </LockProvider>
       </body>
     </html>

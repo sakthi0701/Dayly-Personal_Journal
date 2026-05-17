@@ -10,7 +10,9 @@ interface BreakPromptProps {
 }
 
 export default function BreakPrompt({ onStartBreak, onSkipBreak, onExtend }: BreakPromptProps) {
-  const { state } = useTimer();
+  const task = useTimer(state => state.task);
+  const duration = useTimer(state => state.duration);
+  const state = { task, duration };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm">

@@ -12,8 +12,8 @@ import org.json.JSONException
 class TasksWidget : AppWidgetProvider() {
 
     companion object {
-        // ⚠️ Must match Capacitor v4+ preferences file name
-        private const val PREFS_FILE = "_capacitor_storage_plugin"
+        // ⚠️ Must match Capacitor Preferences plugin SharedPreferences file
+        private const val PREFS_FILE = "CapacitorStorage"
         private const val KEY_TASKS = "widget_tasks"
     }
 
@@ -44,7 +44,8 @@ class TasksWidget : AppWidgetProvider() {
         widgetId: Int
     ) {
         val prefs = context.getSharedPreferences(PREFS_FILE, Context.MODE_PRIVATE)
-        val tasksJsonStr = prefs.getString("cap.$KEY_TASKS", null)
+        // Capacitor Preferences stores values with plain keys (no prefix)
+        val tasksJsonStr = prefs.getString(KEY_TASKS, null)
         
         val views = RemoteViews(context.packageName, R.layout.widget_tasks)
         views.removeAllViews(R.id.widget_tasks_container)
@@ -86,15 +87,7 @@ class TasksWidget : AppWidgetProvider() {
             android.app.PendingIntent.FLAG_UPDATE_CURRENT or android.app.PendingIntent.FLAG_IMMUTABLE
         )
         views.setOnClickPendingIntent(R.id.widget_refresh_button, pendingRefresh)
-
-        // Open app intent
-        val launchIntent = context.packageManager.getLaunchIntentForPackage(context.packageName)
-        if (launchIntent != null) {
-            val pendingLaunch = android.app.PendingIntent.getActivity(
-                context, widgetId, launchIntent, android.app.PendingIntent.FLAG_UPDATE_CURRENT or android.app.PendingIntent.FLAG_IMMUTABLE
-            )
-            views.setOnClickPendingIntent(R.id.widget_tasks_title, pendingLaunch)
-        }
+        views.setOnClickPendingIntent(R.id.widget_root, pendingRefresh)
 
         appWidgetManager.updateAppWidget(widgetId, views)
     }

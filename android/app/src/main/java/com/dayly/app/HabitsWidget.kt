@@ -12,8 +12,8 @@ import org.json.JSONException
 class HabitsWidget : AppWidgetProvider() {
 
     companion object {
-        // ⚠️ Must match Capacitor v4+ preferences file name
-        private const val PREFS_FILE = "_capacitor_storage_plugin"
+        // ⚠️ Must match Capacitor Preferences plugin SharedPreferences file
+        private const val PREFS_FILE = "CapacitorStorage"
         private const val KEY_HABITS = "widget_habits"
     }
 
@@ -44,7 +44,8 @@ class HabitsWidget : AppWidgetProvider() {
         widgetId: Int
     ) {
         val prefs = context.getSharedPreferences(PREFS_FILE, Context.MODE_PRIVATE)
-        val habitsJsonStr = prefs.getString("cap.$KEY_HABITS", null)
+        // Capacitor Preferences stores values with plain keys (no prefix)
+        val habitsJsonStr = prefs.getString(KEY_HABITS, null)
         
         val views = RemoteViews(context.packageName, R.layout.widget_habits)
         views.removeAllViews(R.id.widget_habits_container)
@@ -78,19 +79,11 @@ class HabitsWidget : AppWidgetProvider() {
             component = ComponentName(context, HabitsWidget::class.java)
         }
         val pendingRefresh = android.app.PendingIntent.getBroadcast(
-            context, widgetId + 200000, refreshIntent,
+            context, widgetId + 400000, refreshIntent, // Unique offset for HabitsWidget
             android.app.PendingIntent.FLAG_UPDATE_CURRENT or android.app.PendingIntent.FLAG_IMMUTABLE
         )
         views.setOnClickPendingIntent(R.id.widget_refresh_button, pendingRefresh)
-
-        // Open app intent
-        val launchIntent = context.packageManager.getLaunchIntentForPackage(context.packageName)
-        if (launchIntent != null) {
-            val pendingLaunch = android.app.PendingIntent.getActivity(
-                context, widgetId, launchIntent, android.app.PendingIntent.FLAG_UPDATE_CURRENT or android.app.PendingIntent.FLAG_IMMUTABLE
-            )
-            views.setOnClickPendingIntent(R.id.widget_habits_title, pendingLaunch)
-        }
+        views.setOnClickPendingIntent(R.id.widget_root, pendingRefresh)
 
         appWidgetManager.updateAppWidget(widgetId, views)
     }

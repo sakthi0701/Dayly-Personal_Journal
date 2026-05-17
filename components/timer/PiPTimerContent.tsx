@@ -1,7 +1,7 @@
 'use client';
 
 import { useTimer } from '@/components/timer/TimerProvider';
-import { Pause, Play, Square, PlusCircle, Coffee, RotateCcw } from 'lucide-react';
+import { Pause, Play, Square, PlusCircle, Coffee, RotateCcw, ExternalLink } from 'lucide-react';
 import { useCallback } from 'react';
 
 function fmt(s: number) {
@@ -21,11 +21,21 @@ interface PiPTimerContentProps {
  * Handles both the running/paused state AND the post-session break prompt.
  */
 export default function PiPTimerContent({ onClose }: PiPTimerContentProps) {
-  const {
-    state, remaining,
-    pauseTimer, resumeTimer, abandonTimer,
-    startTimer, completeTimer, extendTimer,
-  } = useTimer();
+  const remaining = useTimer(state => state.remaining);
+  const status = useTimer(state => state.status);
+  const mode = useTimer(state => state.mode);
+  const duration = useTimer(state => state.duration);
+  const task = useTimer(state => state.task);
+  const strictMode = useTimer(state => state.strictMode);
+  const isBreak = useTimer(state => state.isBreak);
+  const pauseTimer = useTimer(state => state.pauseTimer);
+  const resumeTimer = useTimer(state => state.resumeTimer);
+  const abandonTimer = useTimer(state => state.abandonTimer);
+  const startTimer = useTimer(state => state.startTimer);
+  const completeTimer = useTimer(state => state.completeTimer);
+  const extendTimer = useTimer(state => state.extendTimer);
+  const setDuration = useTimer(state => state.setDuration);
+  const state = { status, mode, duration, task, strictMode, isBreak };
 
   const isPaused = state.status === 'paused';
   const isCompleted = state.status === 'completed' && state.mode === 'pomodoro';
@@ -35,17 +45,6 @@ export default function PiPTimerContent({ onClose }: PiPTimerContentProps) {
     : 0;
 
   // ── Break handlers (same logic as GlobalTimerUI) ──────────────────────────
-  const handleBreakStart = useCallback(async () => {
-    await completeTimer();
-    onClose(); // Close PiP after taking a break — return focus to the app
-  }, [completeTimer, onClose]);
-
-  const handleBreakSkip = useCallback(async () => {
-    await completeTimer();
-    startTimer(state.task, state.strictMode);
-    // Keep PiP open for the next session
-  }, [completeTimer, startTimer, state.task, state.strictMode]);
-
   const handleBreakExtend = useCallback(() => {
     extendTimer(1);
     // Keep PiP open — the reducer transitions status to 'running' atomically
@@ -55,40 +54,66 @@ export default function PiPTimerContent({ onClose }: PiPTimerContentProps) {
   if (isCompleted) {
     return (
       <div
-        className="flex flex-col items-center justify-center h-screen bg-zinc-950 text-white select-none"
+        className="flex flex-col items-center justify-center h-screen bg-zinc-950 text-white select-none px-4 text-center"
         style={{ fontFamily: 'Inter, system-ui, -apple-system, sans-serif' }}
       >
-        {/* Header */}
-        <div className="text-4xl mb-2">🍅</div>
-        <p className="text-base font-bold text-white">Session Complete!</p>
-        <p className="text-xs text-indigo-400 font-medium mt-0.5 mb-4">+30 XP earned</p>
+        {state.isBreak ? (
+          <>
+            <div className="text-4xl mb-2">☕</div>
+            <p className="text-base font-bold text-white">Break Over!</p>
+            <p className="text-xs text-zinc-400 mt-0.5 mb-4">Time to get back into deep work.</p>
 
-        {/* Break actions */}
-        <div className="flex flex-col gap-2 w-full px-4">
-          <button
-            onClick={handleBreakExtend}
-            className="w-full flex items-center justify-center gap-1.5 py-2.5 bg-indigo-600/25 hover:bg-indigo-600/45 border border-indigo-500/35 text-indigo-300 text-sm font-semibold rounded-xl transition-all"
-          >
-            <PlusCircle className="w-3.5 h-3.5" />
-            Extend +1 min
-          </button>
-          <div className="flex gap-2">
-            <button
-              onClick={handleBreakStart}
-              className="flex-1 flex items-center justify-center gap-1.5 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold rounded-xl transition-all"
-            >
-              <Coffee className="w-3.5 h-3.5" />
-              Break
-            </button>
-            <button
-              onClick={handleBreakSkip}
-              className="flex-1 flex items-center justify-center gap-1.5 py-2.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-400 hover:text-white text-xs font-medium rounded-xl transition-all"
-            >
-              <RotateCcw className="w-3.5 h-3.5" />
-              Next
-            </button>
-          </div>
-        </div>
+            <div className="flex flex-col gap-2 w-full max-w-[220px]">
+              <button
+                onClick={() => {
+                  setDuration(25);
+                  startTimer(state.task, state.strictMode, [], false);
+                }}
+                className="w-full flex items-center justify-center gap-1.5 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold rounded-xl transition-all shadow"
+              >
+                Start Focus (25m)
+              </button>
+              <button
+                onClick={handleBreakExtend}
+                className="w-full flex items-center justify-center gap-1.5 py-2.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-xs font-medium rounded-xl transition-all"
+              >
+                <PlusCircle className="w-3.5 h-3.5" /> Extend +1 min
+              </button>
+              <button
+                onClick={() => { abandonTimer(); onClose(); }}
+                className="w-full py-1.5 text-xs text-zinc-500 hover:text-zinc-300 transition-all"
+              >
+                Dismiss
+              </button>
+            </div>
+          </>
+        ) : (
+          <>
+            <div className="text-4xl mb-2">🍅</div>
+            <p className="text-base font-bold text-white">Session Complete!</p>
+            <p className="text-xs text-zinc-400 mt-0.5 mb-4">Review session in main tab to claim XP.</p>
+
+            <div className="flex flex-col gap-2 w-full max-w-[220px]">
+              <button
+                onClick={() => {
+                  if (window.opener) {
+                    window.opener.focus();
+                    window.opener.location.href = '/focus';
+                  }
+                }}
+                className="w-full flex items-center justify-center gap-1.5 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold rounded-xl transition-all shadow"
+              >
+                <ExternalLink className="w-3.5 h-3.5" /> Open Review
+              </button>
+              <button
+                onClick={handleBreakExtend}
+                className="w-full flex items-center justify-center gap-1.5 py-2.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-xs font-medium rounded-xl transition-all"
+              >
+                <PlusCircle className="w-3.5 h-3.5" /> Extend +1 min
+              </button>
+            </div>
+          </>
+        )}
       </div>
     );
   }
@@ -102,7 +127,7 @@ export default function PiPTimerContent({ onClose }: PiPTimerContentProps) {
       {/* Progress bar */}
       <div className="h-1 bg-zinc-800/80 flex-shrink-0">
         <div
-          className={`h-full transition-all duration-700 ${isPaused ? 'bg-amber-500' : 'bg-indigo-500'}`}
+          className={`h-full transition-all duration-700 ${isPaused ? 'bg-amber-500' : state.isBreak ? 'bg-emerald-500' : 'bg-indigo-500'}`}
           style={{ width: `${progress * 100}%` }}
         />
       </div>
@@ -112,7 +137,7 @@ export default function PiPTimerContent({ onClose }: PiPTimerContentProps) {
         {/* Mode emoji + countdown */}
         <div className="flex items-center gap-2.5">
           <span className="text-2xl leading-none">
-            {state.mode === 'pomodoro' ? '🍅' : '⏱'}
+            {state.mode === 'pomodoro' ? (state.isBreak ? '☕' : '🍅') : '⏱'}
           </span>
           <span className="font-mono text-[52px] font-bold tabular-nums text-white tracking-tight leading-none">
             {fmt(remaining)}
@@ -130,10 +155,12 @@ export default function PiPTimerContent({ onClose }: PiPTimerContentProps) {
         <div className={`flex items-center gap-1 text-[10px] font-semibold uppercase tracking-widest px-2.5 py-1 rounded-full ${
           isPaused
             ? 'text-amber-400 bg-amber-500/10 border border-amber-500/20'
+            : state.isBreak
+            ? 'text-emerald-400 bg-emerald-500/10 border border-emerald-500/20'
             : 'text-indigo-400 bg-indigo-500/10 border border-indigo-500/20'
         }`}>
-          <span className={`w-1.5 h-1.5 rounded-full ${isPaused ? 'bg-amber-400' : 'bg-indigo-400 animate-pulse'}`} />
-          {isPaused ? 'Paused' : 'Running'}
+          <span className={`w-1.5 h-1.5 rounded-full ${isPaused ? 'bg-amber-400' : state.isBreak ? 'bg-emerald-400 animate-pulse' : 'bg-indigo-400 animate-pulse'}`} />
+          {isPaused ? 'Paused' : state.isBreak ? 'On Break' : 'Running'}
         </div>
       </div>
 
@@ -175,3 +202,4 @@ export default function PiPTimerContent({ onClose }: PiPTimerContentProps) {
     </div>
   );
 }
+

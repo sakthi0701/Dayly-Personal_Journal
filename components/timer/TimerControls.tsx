@@ -11,8 +11,14 @@ interface TimerControlsProps {
 }
 
 export default function TimerControls({ onFlipClock, onComplete, onStart }: TimerControlsProps) {
-  const { state, startTimer, pauseTimer, resumeTimer, completeTimer, abandonTimer } = useTimer();
-  const { status } = state;
+  const status = useTimer(state => state.status);
+  const task = useTimer(state => state.task);
+  const startTimer = useTimer(state => state.startTimer);
+  const pauseTimer = useTimer(state => state.pauseTimer);
+  const resumeTimer = useTimer(state => state.resumeTimer);
+  const completeTimer = useTimer(state => state.completeTimer);
+  const abandonTimer = useTimer(state => state.abandonTimer);
+  const state = { status, task };
 
   const handleComplete = async () => {
     // completeTimer with no args still saves session; review sheet handles XP breakdown

@@ -19,7 +19,7 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: 'blockId is required' }, { status: 400 });
     }
 
-    // Check idempotency: If already completed, do nothing
+    // Check idempotency: If already completed, handle review update / return existing stats
     const { data: existingBlock } = await supabase
       .from('time_blocks')
       .select('completed, task_id, mode')
@@ -27,7 +27,72 @@ export async function POST(request: Request) {
       .single();
 
     if (existingBlock?.completed) {
-      return NextResponse.json({ success: true, message: 'Already completed' });
+      const { data: existingReview } = await supabase
+        .from('session_reviews')
+        .select('*')
+        .eq('time_block_id', blockId)
+        .single();
+
+      let xpEarned = existingReview?.xp_earned ?? 30;
+      let xpDeducted = existingReview?.xp_deducted ?? 0;
+      const distractionCount = triggered_distractions.length;
+      const hadNotToDoSelected = not_to_do_selected.length > 0;
+
+      let newXpEarned = 30;
+      let newXpDeducted = 0;
+      if (hadNotToDoSelected && distractionCount === 0) {
+        newXpEarned += 15;
+      } else if (distractionCount >= 2) {
+        newXpDeducted = 5;
+      }
+
+      const oldNet = xpEarned - xpDeducted;
+      const newNet = newXpEarned - newXpDeducted;
+      const diff = newNet - oldNet;
+
+      if (diff !== 0) {
+        await addXP(diff);
+      }
+
+      if (existingReview) {
+        await supabase
+          .from('session_reviews')
+          .update({
+            triggered_distractions,
+            xp_earned: newXpEarned,
+            xp_deducted: newXpDeducted,
+            completion_note: completion_note ?? existingReview.completion_note,
+          })
+          .eq('id', existingReview.id);
+      } else {
+        let taskTitle: string | null = null;
+        if (task_id) {
+          const { data: t } = await supabase.from('tasks').select('title').eq('id', task_id).single();
+          if (t) taskTitle = t.title;
+          else {
+            const { data: pt } = await supabase.from('pressure_tasks').select('title').eq('id', task_id).single();
+            if (pt) taskTitle = pt.title;
+          }
+        }
+        await supabase.from('session_reviews').insert({
+          time_block_id: blockId,
+          task_title: taskTitle,
+          selected_not_to_dos: not_to_do_selected,
+          triggered_distractions,
+          xp_earned: newXpEarned,
+          xp_deducted: newXpDeducted,
+          completion_note: completion_note ?? null,
+          session_duration_seconds: duration ?? null,
+        });
+      }
+
+      return NextResponse.json({
+        success: true,
+        xpEarned: newXpEarned,
+        xpDeducted: newXpDeducted,
+        cleanSession: hadNotToDoSelected && distractionCount === 0,
+        message: 'Already completed, review updated',
+      });
     }
 
     const end_time = new Date().toISOString();
@@ -83,7 +148,18 @@ export async function POST(request: Request) {
         .select('title')
         .eq('id', task_id)
         .single();
-      taskTitle = t?.title ?? null;
+      if (t) {
+        taskTitle = t.title;
+      } else {
+        const { data: pt } = await supabase
+          .from('pressure_tasks')
+          .select('title')
+          .eq('id', task_id)
+          .single();
+        if (pt) {
+          taskTitle = pt.title;
+        }
+      }
     }
 
     await supabase.from('session_reviews').insert({
@@ -109,3 +185,4 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: 'Failed to complete timer session' }, { status: 500 });
   }
 }
+

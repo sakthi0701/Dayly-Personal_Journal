@@ -236,10 +236,11 @@ export async function triggerWidgetDataSync(): Promise<void> {
   if (typeof window === 'undefined') return; // Client only
   
   try {
-    const [tasksRes, habitsRes, goalsRes] = await Promise.all([
+    const [tasksRes, habitsRes, goalsRes, statsRes] = await Promise.all([
       fetch('/api/tasks?status=todo').then(r => r.json()).catch(() => ({ tasks: [] })),
       fetch('/api/habits').then(r => r.json()).catch(() => ({ habits: [] })),
-      fetch('/api/goals').then(r => r.json()).catch(() => ({ goals: [] }))
+      fetch('/api/goals').then(r => r.json()).catch(() => ({ goals: [] })),
+      fetch('/api/stats/user').then(r => r.json()).catch(() => null)
     ]);
 
     const tasks = (tasksRes.tasks ?? []).slice(0, 5).map((t: any) => ({
@@ -258,6 +259,13 @@ export async function triggerWidgetDataSync(): Promise<void> {
     }));
 
     await syncWidgetsToNative(tasks, habits, goals);
+
+    // Sync Sun Warrior stats so SunWarriorWidget can display live streak/XP
+    if (statsRes?.stats) {
+      const { streak_days, xp } = statsRes.stats;
+      await Preferences.set({ key: 'streak_days', value: String(streak_days ?? 0) });
+      await Preferences.set({ key: 'xp', value: String(xp ?? 0) });
+    }
   } catch (e) {
     console.error('[WidgetSync] Data fetch failed', e);
   }

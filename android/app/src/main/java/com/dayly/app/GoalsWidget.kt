@@ -12,8 +12,8 @@ import org.json.JSONException
 class GoalsWidget : AppWidgetProvider() {
 
     companion object {
-        // ⚠️ Must match Capacitor v4+ preferences file name
-        private const val PREFS_FILE = "_capacitor_storage_plugin"
+        // ⚠️ Must match Capacitor Preferences plugin SharedPreferences file
+        private const val PREFS_FILE = "CapacitorStorage"
         private const val KEY_GOALS = "widget_goals"
     }
 
@@ -44,7 +44,8 @@ class GoalsWidget : AppWidgetProvider() {
         widgetId: Int
     ) {
         val prefs = context.getSharedPreferences(PREFS_FILE, Context.MODE_PRIVATE)
-        val goalsJsonStr = prefs.getString("cap.$KEY_GOALS", null)
+        // Capacitor Preferences stores values with plain keys (no prefix)
+        val goalsJsonStr = prefs.getString(KEY_GOALS, null)
         
         val views = RemoteViews(context.packageName, R.layout.widget_goals)
         views.removeAllViews(R.id.widget_goals_container)
@@ -89,19 +90,11 @@ class GoalsWidget : AppWidgetProvider() {
             component = ComponentName(context, GoalsWidget::class.java)
         }
         val pendingRefresh = android.app.PendingIntent.getBroadcast(
-            context, widgetId + 200000, refreshIntent,
+            context, widgetId + 500000, refreshIntent, // Unique offset for GoalsWidget
             android.app.PendingIntent.FLAG_UPDATE_CURRENT or android.app.PendingIntent.FLAG_IMMUTABLE
         )
         views.setOnClickPendingIntent(R.id.widget_refresh_button, pendingRefresh)
-
-        // Open app intent
-        val launchIntent = context.packageManager.getLaunchIntentForPackage(context.packageName)
-        if (launchIntent != null) {
-            val pendingLaunch = android.app.PendingIntent.getActivity(
-                context, widgetId, launchIntent, android.app.PendingIntent.FLAG_UPDATE_CURRENT or android.app.PendingIntent.FLAG_IMMUTABLE
-            )
-            views.setOnClickPendingIntent(R.id.widget_goals_title, pendingLaunch)
-        }
+        views.setOnClickPendingIntent(R.id.widget_root, pendingRefresh)
 
         appWidgetManager.updateAppWidget(widgetId, views)
     }

@@ -29,11 +29,27 @@ function fmt(s: number) {
 }
 
 export default function GlobalTimerUI() {
-  const {
-    state, remaining,
-    pauseTimer, resumeTimer, abandonTimer,
-    startTimer, completeTimer, extendTimer, setDuration
-  } = useTimer();
+  const status = useTimer(state => state.status);
+  const mode = useTimer(state => state.mode);
+  const task = useTimer(state => state.task);
+  const strictMode = useTimer(state => state.strictMode);
+  const duration = useTimer(state => state.duration);
+  const remaining = useTimer(state => state.remaining);
+  const isBreak = useTimer(state => state.isBreak);
+  const pauseTimer = useTimer(state => state.pauseTimer);
+  const resumeTimer = useTimer(state => state.resumeTimer);
+  const abandonTimer = useTimer(state => state.abandonTimer);
+  const startTimer = useTimer(state => state.startTimer);
+  const completeTimer = useTimer(state => state.completeTimer);
+  const extendTimer = useTimer(state => state.extendTimer);
+  const setDuration = useTimer(state => state.setDuration);
+  const init = useTimer(state => state.init);
+
+  useEffect(() => {
+    init();
+  }, [init]);
+
+  const state = { status, mode, task, strictMode, duration, isBreak };
   const pathname = usePathname();
   const { pipWindow, isPiPOpen, closePiP, setPiPWindow, isSupported } = usePiP();
 
@@ -63,13 +79,13 @@ export default function GlobalTimerUI() {
   // ── Completion ──────────────────────────────────────────────────────────
   useEffect(() => {
     if (state.status === 'completed' && state.mode === 'pomodoro') {
-      // On /focus, SessionReviewSheet handles the post-session flow — don't show global break prompt
-      if (!isOnFocusPage) {
+      // On /focus, SessionReviewSheet handles the post-session flow for work sessions
+      if (!isOnFocusPage || state.isBreak) {
         setShowBreak(true);
       }
       if ('Notification' in window && Notification.permission === 'granted') {
-        new Notification('🍅 Pomodoro Complete!', {
-          body: isPiPOpen ? 'Check the floating window.' : 'Great work! Review your session.',
+        new Notification(state.isBreak ? '☕ Break Over!' : '🍅 Pomodoro Complete!', {
+          body: isPiPOpen ? 'Check the floating window.' : (state.isBreak ? 'Time to get back into deep work.' : 'Great work! Review your session.'),
           icon: '/favicon.ico',
         });
       }
@@ -78,8 +94,8 @@ export default function GlobalTimerUI() {
         LocalNotifications.schedule({
           notifications: [
             {
-              title: '🍅 Pomodoro Complete!',
-              body: 'Great work! Review your session for bonus XP.',
+              title: state.isBreak ? '☕ Break Over!' : '🍅 Pomodoro Complete!',
+              body: state.isBreak ? 'Time to get back into deep work.' : 'Great work! Review your session for bonus XP.',
               id: Math.floor(Date.now() / 1000) % 100000,
               schedule: { at: new Date(Date.now() + 1000) },
             }
@@ -90,7 +106,7 @@ export default function GlobalTimerUI() {
     } else {
       setShowBreak(false);
     }
-  }, [state.status, state.mode, isPiPOpen, isOnFocusPage]);
+  }, [state.status, state.mode, state.isBreak, isPiPOpen, isOnFocusPage]);
 
   // ── Auto-close PiP ──────────────────────────────────────────────────────
   useEffect(() => {
@@ -110,14 +126,14 @@ export default function GlobalTimerUI() {
     }
     navigator.mediaSession.metadata = new MediaMetadata({
       title: `${fmt(remaining)} remaining`,
-      artist: state.task?.title ?? 'Free Focus',
-      album: state.mode === 'pomodoro' ? '🍅 Pomodoro' : '⏱ Stopwatch',
+      artist: state.task?.title ?? (state.isBreak ? '☕ Break' : 'Free Focus'),
+      album: state.mode === 'pomodoro' ? (state.isBreak ? '☕ Break' : '🍅 Pomodoro') : '⏱ Stopwatch',
     });
     navigator.mediaSession.playbackState = state.status === 'paused' ? 'paused' : 'playing';
     navigator.mediaSession.setActionHandler('play', () => resumeTimer());
     navigator.mediaSession.setActionHandler('pause', () => pauseTimer());
     navigator.mediaSession.setActionHandler('stop', () => abandonTimer());
-  }, [state.status, state.mode, state.task, remaining, pauseTimer, resumeTimer, abandonTimer]);
+  }, [state.status, state.mode, state.task, state.isBreak, remaining, pauseTimer, resumeTimer, abandonTimer]);
 
   // ── PiP Opener ──────────────────────────────────────────────────────────
   const openPiP = useCallback(async () => {
@@ -149,25 +165,41 @@ export default function GlobalTimerUI() {
 
       {showBreak && !isPiPOpen && (
         <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/70 backdrop-blur-sm">
-           <div className="bg-zinc-900 p-8 rounded-2xl border border-zinc-800 text-center shadow-2xl">
-              <div className="text-4xl mb-4">🍅</div>
-              <h2 className="text-2xl font-bold mb-2">Session Complete!</h2>
-              <div className="flex flex-col gap-2 mt-6">
-                <button onClick={() => extendTimer(1)} className="px-6 py-3 bg-indigo-600 rounded-xl font-bold">Extend +1 min</button>
-                <button onClick={async () => { 
-                  await completeTimer(); 
-                  window.dispatchEvent(new CustomEvent('dayly-refresh-tasks'));
-                  setDuration(5); 
-                  startTimer(null, false); 
-                }} className="px-6 py-3 bg-emerald-600 rounded-xl font-bold">Take Break</button>
-                <button onClick={async () => { 
-                  await completeTimer(); 
-                  window.dispatchEvent(new CustomEvent('dayly-refresh-tasks'));
-                  setDuration(25); 
-                  startTimer(state.task, state.strictMode); 
-                }} className="px-6 py-3 bg-zinc-800 rounded-xl">Skip Break</button>
-              </div>
-           </div>
+           {state.isBreak ? (
+             <div className="bg-zinc-900 p-8 rounded-2xl border border-zinc-800 text-center shadow-2xl animate-slide-up max-w-sm w-full mx-4">
+                <div className="text-4xl mb-4">☕</div>
+                <h2 className="text-2xl font-bold mb-2">Break Over!</h2>
+                <p className="text-sm text-zinc-400 mb-6">Time to get back into deep work.</p>
+                <div className="flex flex-col gap-2">
+                  <button onClick={() => {
+                    setDuration(25);
+                    startTimer(state.task, state.strictMode, [], false);
+                  }} className="px-6 py-3 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl font-bold shadow-lg shadow-indigo-600/20 transition-all">
+                    Start Focus (25m)
+                  </button>
+                  <button onClick={() => extendTimer(1)} className="px-6 py-3 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded-xl font-medium transition-all">
+                    Extend Break (+1m)
+                  </button>
+                  <button onClick={() => abandonTimer()} className="px-6 py-2 text-sm text-zinc-500 hover:text-zinc-300 transition-all">
+                    Dismiss
+                  </button>
+                </div>
+             </div>
+           ) : (
+             <div className="bg-zinc-900 p-8 rounded-2xl border border-zinc-800 text-center shadow-2xl animate-slide-up max-w-sm w-full mx-4">
+                <div className="text-4xl mb-4">🍅</div>
+                <h2 className="text-2xl font-bold mb-2">Session Complete!</h2>
+                <p className="text-sm text-zinc-400 mb-6">Great work! Review your session to claim your XP.</p>
+                <div className="flex flex-col gap-2">
+                  <Link href="/focus" onClick={() => setShowBreak(false)} className="px-6 py-3 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl font-bold shadow-lg shadow-indigo-600/20 transition-all block">
+                    Review Session &amp; Claim XP
+                  </Link>
+                  <button onClick={() => extendTimer(1)} className="px-6 py-3 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded-xl font-medium transition-all">
+                    Extend +1 min
+                  </button>
+                </div>
+             </div>
+           )}
         </div>
       )}
 
@@ -200,3 +232,4 @@ export default function GlobalTimerUI() {
     </>
   );
 }
+

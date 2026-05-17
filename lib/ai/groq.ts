@@ -226,7 +226,7 @@ async function summarizeDraftIfNeeded(draft: string): Promise<string> {
         { role: 'system', content: systemPrompt },
         { role: 'user', content: draft },
       ],
-      model: 'llama-3.3-70b-versatile',
+      model: 'llama-3.1-8b-instant',
       temperature: 0.3,
     });
     return completion.choices[0]?.message?.content?.trim() || draft;

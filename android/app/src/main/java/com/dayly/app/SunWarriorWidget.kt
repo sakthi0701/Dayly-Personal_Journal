@@ -19,8 +19,8 @@ import android.widget.RemoteViews
 class SunWarriorWidget : AppWidgetProvider() {
 
     companion object {
-        // ⚠️ Must match Capacitor v4+ preferences file name
-        private const val PREFS_FILE = "_capacitor_storage_plugin"
+        // ⚠️ Must match Capacitor Preferences plugin SharedPreferences file
+        private const val PREFS_FILE = "CapacitorStorage"
         private const val KEY_STREAK = "streak_days"
         private const val KEY_XP     = "xp"
         private const val XP_PER_LEVEL = 100
@@ -55,9 +55,9 @@ class SunWarriorWidget : AppWidgetProvider() {
     ) {
         val prefs = context.getSharedPreferences(PREFS_FILE, Context.MODE_PRIVATE)
 
-        // Capacitor stores values with a "cap." namespace prefix
-        val streak = prefs.getString("cap.$KEY_STREAK", "0")?.toIntOrNull() ?: 0
-        val xp     = prefs.getString("cap.$KEY_XP", "0")?.toIntOrNull() ?: 0
+        // Capacitor Preferences stores values with plain keys (no prefix)
+        val streak = prefs.getString(KEY_STREAK, "0")?.toIntOrNull() ?: 0
+        val xp     = prefs.getString(KEY_XP, "0")?.toIntOrNull() ?: 0
 
         val avatarState = when {
             streak >= 7  -> "sun"
@@ -97,23 +97,12 @@ class SunWarriorWidget : AppWidgetProvider() {
         }
         val pendingRefresh = android.app.PendingIntent.getBroadcast(
             context,
-            widgetId + 300000,
+            widgetId + 600000, // Unique offset for SunWarriorWidget refresh
             refreshIntent,
             android.app.PendingIntent.FLAG_UPDATE_CURRENT or android.app.PendingIntent.FLAG_IMMUTABLE
         )
         views.setOnClickPendingIntent(R.id.widget_refresh_button, pendingRefresh)
-
-        // ── Tapping the streak number opens the app ───────────────────────────
-        val launchIntent = context.packageManager.getLaunchIntentForPackage(context.packageName)
-        if (launchIntent != null) {
-            val pendingLaunch = android.app.PendingIntent.getActivity(
-                context,
-                widgetId,
-                launchIntent,
-                android.app.PendingIntent.FLAG_UPDATE_CURRENT or android.app.PendingIntent.FLAG_IMMUTABLE
-            )
-            views.setOnClickPendingIntent(R.id.widget_streak_number, pendingLaunch)
-        }
+        views.setOnClickPendingIntent(R.id.widget_root, pendingRefresh)
 
         appWidgetManager.updateAppWidget(widgetId, views)
     }

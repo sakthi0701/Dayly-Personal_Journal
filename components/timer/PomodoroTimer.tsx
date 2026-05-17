@@ -13,7 +13,12 @@ function formatTime(seconds: number) {
 }
 
 export default function PomodoroTimer({ onComplete }: PomodoroTimerProps) {
-  const { state, remaining } = useTimer();
+  const remaining = useTimer(state => state.remaining);
+  const mode = useTimer(state => state.mode);
+  const duration = useTimer(state => state.duration);
+  const status = useTimer(state => state.status);
+  const task = useTimer(state => state.task);
+  const state = { mode, duration, status, task };
   const { m, s } = formatTime(remaining);
 
   const radius = 88;

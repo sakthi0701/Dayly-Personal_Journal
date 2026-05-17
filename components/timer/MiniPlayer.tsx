@@ -14,7 +14,16 @@ function fmt(s: number) {
 }
 
 export default function MiniPlayer({ collapsed }: { collapsed: boolean }) {
-  const { state, remaining, pauseTimer, resumeTimer, abandonTimer, extendTimer } = useTimer();
+  const remaining = useTimer(state => state.remaining);
+  const status = useTimer(state => state.status);
+  const mode = useTimer(state => state.mode);
+  const duration = useTimer(state => state.duration);
+  const task = useTimer(state => state.task);
+  const pauseTimer = useTimer(state => state.pauseTimer);
+  const resumeTimer = useTimer(state => state.resumeTimer);
+  const abandonTimer = useTimer(state => state.abandonTimer);
+  const extendTimer = useTimer(state => state.extendTimer);
+  const state = { status, mode, duration, task };
   const { isPiPOpen, closePiP, setPiPWindow, isSupported } = usePiP();
 
   const openPiP = useCallback(async () => {

@@ -1,7 +1,8 @@
 'use client';
 
 import { useState } from 'react';
-import { Check, X, Zap, Star, AlertTriangle } from 'lucide-react';
+import { Check, X, Zap, Star, AlertTriangle, Coffee, RotateCcw } from 'lucide-react';
+import { useTimer } from '@/components/timer/TimerProvider';
 
 interface NotToDoItem {
   label: string;
@@ -31,6 +32,12 @@ export default function SessionReviewSheet({
   const [triggered, setTriggered] = useState<Set<string>>(new Set());
   const [note, setNote] = useState('');
   const [submitted, setSubmitted] = useState(false);
+
+  const startTimer = useTimer(state => state.startTimer);
+  const setDuration = useTimer(state => state.setDuration);
+  const task = useTimer(state => state.task);
+  const strictMode = useTimer(state => state.strictMode);
+  const abandonTimer = useTimer(state => state.abandonTimer);
 
   const toggleDistraction = (label: string) => {
     setTriggered((prev) => {
@@ -97,16 +104,39 @@ export default function SessionReviewSheet({
             </div>
           </div>
 
-          <p className="text-xs text-zinc-500 mb-4">
+          <p className="text-xs text-zinc-500 mb-6">
             🍅 {Math.round(sessionMinutes)}m of deep work logged
           </p>
 
-          <button
-            onClick={() => window.location.reload()}
-            className="w-full py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-medium rounded-xl transition-all"
-          >
-            Start Next Session
-          </button>
+          {/* The Three Options */}
+          <div className="flex flex-col gap-2.5">
+            <button
+              onClick={() => {
+                setDuration(5);
+                startTimer(null, false, [], true);
+              }}
+              className="w-full py-3 bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-semibold rounded-xl transition-all flex items-center justify-center gap-2 shadow-lg shadow-emerald-600/20"
+            >
+              <Coffee className="w-4 h-4" /> Take Break (5m)
+            </button>
+            <button
+              onClick={() => {
+                setDuration(25);
+                startTimer(task, strictMode, notToDoItems, false);
+              }}
+              className="w-full py-3 bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-semibold rounded-xl transition-all flex items-center justify-center gap-2 shadow-lg shadow-indigo-600/20"
+            >
+              <RotateCcw className="w-4 h-4" /> Skip Break &amp; Focus (25m)
+            </button>
+            <button
+              onClick={() => {
+                abandonTimer();
+              }}
+              className="w-full py-2.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 hover:text-white text-sm font-medium rounded-xl transition-all"
+            >
+              Done for Now
+            </button>
+          </div>
         </div>
       </div>
     );
@@ -234,3 +264,4 @@ export default function SessionReviewSheet({
     </div>
   );
 }
+
