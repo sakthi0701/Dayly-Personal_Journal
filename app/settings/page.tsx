@@ -5,6 +5,7 @@ import { ArrowLeft, ShieldCheck, Trash2, AlertTriangle, Loader2 } from 'lucide-r
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import AppLockSettings from '@/components/settings/AppLockSettings';
+import TimezoneSettings from '@/components/settings/TimezoneSettings';
 
 export default function SettingsPage() {
     const [isConfirming, setIsConfirming] = useState(false);
@@ -65,6 +66,8 @@ export default function SettingsPage() {
                     </div>
 
                     <AppLockSettings />
+                    <TimezoneSettings />
+
 
                     {/* Danger Zone */}
                     <div className="mt-12 pt-6 border-t border-red-500/20">

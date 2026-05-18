@@ -8,6 +8,7 @@ export async function POST(request: Request) {
     const {
       blockId,
       duration,
+      total_duration,   // planned session length in seconds (sent by store)
       task_id,
       // Phase 13: session review fields (all optional)
       not_to_do_selected = [],   // [{label, emoji}]
@@ -17,6 +18,15 @@ export async function POST(request: Request) {
 
     if (!blockId) {
       return NextResponse.json({ error: 'blockId is required' }, { status: 400 });
+    }
+
+    // ── 20% minimum threshold ─────────────────────────────────────────────────
+    // If less than 20% of the planned session was elapsed, treat as abandoned:
+    // delete the block so it doesn't pollute focus stats or task pomodoro counts.
+    const plannedSeconds = total_duration ?? (25 * 60); // fallback: full pomodoro
+    if (duration != null && duration < plannedSeconds * 0.2) {
+      await supabase.from('time_blocks').delete().eq('id', blockId);
+      return NextResponse.json({ success: true, abandoned: true, reason: 'below_minimum_threshold' });
     }
 
     // Check idempotency: If already completed, handle review update / return existing stats

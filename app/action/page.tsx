@@ -68,11 +68,12 @@ export default function ActionPage() {
 
   // Load summary strip data
   useEffect(() => {
+    const t = Date.now();
     Promise.all([
-      fetch('/api/stats/dashboard').then(r => r.json()).catch(() => ({})),
-      fetch('/api/goals').then(r => r.json()).catch(() => ({ goals: [] })),
-      fetch('/api/habits').then(r => r.json()).catch(() => ({ habits: [] })),
-      fetch('/api/stats/user').then(r => r.json()).catch(() => ({ stats: null })),
+      fetch(`/api/stats/dashboard?t=${t}`).then(r => r.json()).catch(() => ({})),
+      fetch(`/api/goals?t=${t}`).then(r => r.json()).catch(() => ({ goals: [] })),
+      fetch(`/api/habits?t=${t}`).then(r => r.json()).catch(() => ({ habits: [] })),
+      fetch(`/api/stats/user?t=${t}`).then(r => r.json()).catch(() => ({ stats: null })),
     ]).then(([dashStats, goalsData, habitsData, userStats]) => {
       const today = new Date().toISOString().slice(0, 10);
       const habitsToday = (habitsData.habits ?? []).filter((h: { habit_logs?: { logged_at: string }[] }) =>

@@ -25,10 +25,10 @@ export default function LockScreen({ onUnlock }: LockScreenProps) {
         setError('');
 
         let targetHash = localStorage.getItem('dayly_pin_hash');
-        
+
         // If no PIN is configured locally, default to master PIN for web security
         if (!targetHash) {
-            targetHash = await hashString(process.env.NEXT_PUBLIC_MASTER_PIN || '0701');
+            targetHash = await hashString(process.env.NEXT_PUBLIC_MASTER_PIN || '2027');
         }
 
         const inputHash = await hashString(pin);

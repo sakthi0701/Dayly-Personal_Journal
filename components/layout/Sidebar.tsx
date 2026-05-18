@@ -14,6 +14,7 @@ import {
   Timer,
   Brain,
   Swords,
+  Settings,
 } from 'lucide-react';
 import MiniPlayer from '@/components/timer/MiniPlayer';
 import { LEVEL_THRESHOLDS } from '@/lib/gamification';
@@ -30,7 +31,9 @@ const NAV_ITEMS = [
   { href: '/focus',   icon: Timer,           label: 'Focus'    },
   { href: '/entries', icon: BookOpen,        label: 'Journal'  },
   { href: '/sensei',  icon: Brain,           label: 'Sensei'   },
+  { href: '/settings', icon: Settings,       label: 'Settings' },
 ];
+
 
 /** Use the canonical level table from gamification.ts */
 function getLevelInfo(xp: number) {

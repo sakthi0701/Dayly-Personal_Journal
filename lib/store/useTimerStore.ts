@@ -206,12 +206,14 @@ export const useTimerStore = create<TimerStore>((set, get) => ({
         body: JSON.stringify({
           blockId,
           duration: elapsed,
+          total_duration: get().duration,  // planned session length for 20% threshold
           task_id: task?.id ?? null,
           not_to_do_selected: notToDoItems,
           triggered_distractions: reviewData?.triggeredDistractions ?? [],
           completion_note: reviewData?.completionNote ?? null,
         }),
       });
+
       const result = await res.json();
 
       if (typeof window !== 'undefined') {

@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
 
+export const dynamic = 'force-dynamic';
+
 // GET /api/sensei/threads — list all threads newest first
 export async function GET() {
   try {

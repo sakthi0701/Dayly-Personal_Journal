@@ -1,6 +1,8 @@
 import { NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
 
+export const dynamic = 'force-dynamic';
+
 // GET /api/not-to-do — list all items ordered by sort_order
 export async function GET() {
   try {

@@ -8,7 +8,11 @@ import type { ExecutionSummary } from '@/lib/ai/groq';
 /**
  * POST /api/sensei/chat
  *
- * Body: { threadId?: string, message: string, mode?: string }
+ * Body: { threadId?: string, message: string }
+ *
+ * Two-state AI logic:
+ *   - If `message` is provided → treated as the user's question (Q&A mode)
+ *   - The AI autonomously picks the most critical insight angle when no question is sent
  *
  * Layered context strategy:
  *   1. User's current message
@@ -19,7 +23,7 @@ import type { ExecutionSummary } from '@/lib/ai/groq';
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { message, mode = 'Sensei' } = body;
+    const { message } = body;
     let { threadId } = body;
 
     if (!message?.trim()) {
@@ -49,7 +53,6 @@ export async function POST(request: Request) {
       thread_id: threadId,
       role: 'user',
       content: message.trim(),
-      metadata: { mode },
     });
 
     // ── 3. Fetch recent thread context (last 10 messages) ─────────────────────
@@ -114,6 +117,9 @@ export async function POST(request: Request) {
     const activeGoals = activeGoalsRes.data ?? [];
     const habitLogs = habitLogsRes.data ?? [];
 
+    // Suppress unused var lint — focusStatsRes fetched for future use
+    void focusStatsRes;
+
     const totalPlanned = tasks.reduce((s, t) => s + (t.estimated_pomodoros ?? 0), 0);
     const totalCompleted = tasks.reduce((s, t) => s + (t.elapsed_pomodoros ?? 0), 0);
     const strictFailed = strictBlocks.filter((b) => b.failed_reason).length;
@@ -159,10 +165,9 @@ export async function POST(request: Request) {
       ? memResults.results.map((r) => ({ content: r.memory }))
       : [];
 
-    // ── 8. Generate response ───────────────────────────────────────────────────
+    // ── 8. Generate response (two-state: Q&A vs Autonomous Insight) ───────────
     const advice = await generateAdvice(
       safeEntries,
-      mode,
       augmentedQuestion,
       stats ?? undefined,
       executionData,
@@ -173,7 +178,7 @@ export async function POST(request: Request) {
       thread_id: threadId,
       role: 'assistant',
       content: advice,
-      metadata: { mode, executionSummary: executionData },
+      metadata: { executionSummary: executionData },
     });
 
     // Update thread last_message_at
