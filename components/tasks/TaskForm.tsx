@@ -117,6 +117,7 @@ export default function TaskForm({ parentId, initialData, onCreated, onUpdated, 
           estimated_pomodoros: payload.estimated_pomodoros,
           due_date: payload.due_date,
           tags: selectedTags,
+          goal_id: payload.goal_id,
         });
       } else {
         // ── CREATE MODE ────────────────────────────────────────────────────

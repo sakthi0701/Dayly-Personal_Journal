@@ -14,7 +14,7 @@ export async function PATCH(request: Request, context: RouteContext) {
     const allowed = [
       'title', 'notes', 'status', 'priority',
       'estimated_pomodoros', 'elapsed_pomodoros',
-      'due_date', 'is_recurring', 'recurrence_rule', 'position',
+      'due_date', 'is_recurring', 'recurrence_rule', 'position', 'goal_id',
     ];
 
     const updates: Record<string, unknown> = {};
