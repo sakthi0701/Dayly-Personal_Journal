@@ -147,9 +147,10 @@ async function scheduleNativeReminders(streakDays: number) {
 export default function NotificationManager() {
   useEffect(() => {
     // Fetch streak + check if user focused today before scheduling
+    const tz = (typeof window !== 'undefined' ? localStorage.getItem('dayly_timezone') : null) ?? 'UTC';
     Promise.all([
       fetch('/api/stats/user').then((r) => r.json()).catch(() => ({ stats: null })),
-      fetch('/api/stats/pomodoro').then((r) => r.json()).catch(() => null),
+      fetch(`/api/stats/pomodoro?tz=${tz}`).then((r) => r.json()).catch(() => null),
     ]).then(async ([statsData, pomodoroData]) => {
       const streakDays = statsData?.stats?.streak_days ?? 0;
       const focusedToday = (pomodoroData?.todayFocusMinutes ?? 0) > 0;

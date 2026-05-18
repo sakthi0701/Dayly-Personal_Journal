@@ -193,7 +193,7 @@ export async function POST(req: Request) {
       `[Advice Engine] Found ${safeEntries.length} journal memories. Execution data assembled. Connecting to LLM...`
     );
 
-    const advice = await generateAdvice(safeEntries, mode, question, stats ?? undefined, executionData);
+    const advice = await generateAdvice(safeEntries, question, stats ?? undefined, executionData);
 
     return NextResponse.json({ advice, executionData });
   } catch (error) {

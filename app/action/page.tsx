@@ -1,6 +1,7 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, Suspense } from 'react';
+import { useSearchParams } from 'next/navigation';
 import { Plus, Search, Filter, Loader2, RefreshCw, Target, Flame, CheckSquare, Clock, Zap, Ban } from 'lucide-react';
 import GlobalDashboardStats from '@/components/tasks/GlobalDashboardStats';
 import TaskList from '@/components/tasks/TaskList';
@@ -16,7 +17,19 @@ type FilterStatus = 'all' | 'todo' | 'in-progress' | 'done';
 type Segment = 'tasks' | 'goals-habits' | 'not-to-do' | 'pressure';
 
 export default function ActionPage() {
-  const [segment, setSegment] = useState<Segment>('tasks');
+  return (
+    <Suspense fallback={null}>
+      <ActionPageInner />
+    </Suspense>
+  );
+}
+
+function ActionPageInner() {
+  const searchParams = useSearchParams();
+  const tabParam = searchParams.get('tab');
+  const validTabs: Segment[] = ['tasks', 'goals-habits', 'not-to-do', 'pressure'];
+  const initialSegment: Segment = validTabs.includes(tabParam as Segment) ? (tabParam as Segment) : 'tasks';
+  const [segment, setSegment] = useState<Segment>(initialSegment);
 
   // ── Tasks state ──────────────────────────────────────────
   const [tasks, setTasks] = useState<Task[]>([]);

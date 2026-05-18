@@ -76,7 +76,8 @@ export default function SenseiPage() {
   // ── Data loading ─────────────────────────────────────────────────────────────
   const loadAnalytics = useCallback((range: ChartRange) => {
     const t = Date.now();
-    fetch(`/api/stats/pomodoro?range=${range}&t=${t}`).then(r => r.json()).then(setAnalytics).catch(() => null);
+    const tz = (typeof window !== 'undefined' ? localStorage.getItem('dayly_timezone') : null) ?? 'UTC';
+    fetch(`/api/stats/pomodoro?range=${range}&tz=${tz}&t=${t}`).then(r => r.json()).then(setAnalytics).catch(() => null);
   }, []);
 
   const loadData = useCallback(() => {
@@ -284,7 +285,7 @@ export default function SenseiPage() {
                 <Tooltip
                   contentStyle={{ background: '#18181b', border: '1px solid #3f3f46', borderRadius: 10, fontSize: 12 }}
                   labelStyle={{ color: '#a1a1aa' }} itemStyle={{ color: '#a5b4fc' }}
-                  formatter={(v: number) => [`${v}m`, 'Focus']}
+                  formatter={(v: number | undefined) => [`${v ?? 0}m`, 'Focus']}
                 />
                 <Area type="monotone" dataKey="minutes" stroke="#6366f1" strokeWidth={2} fill="url(#focusGrad)" dot={false} activeDot={{ r: 4, fill: '#6366f1' }} />
               </AreaChart>
@@ -320,7 +321,7 @@ export default function SenseiPage() {
                 <Tooltip
                   contentStyle={{ background: '#18181b', border: '1px solid #3f3f46', borderRadius: 10, fontSize: 12 }}
                   labelStyle={{ color: '#a1a1aa' }} itemStyle={{ color: '#6ee7b7' }}
-                  formatter={(v: number) => [secondaryView === 'weekday' ? `${v}m avg` : `${v} blocks`, '']}
+                  formatter={(v: number | undefined) => [secondaryView === 'weekday' ? `${v ?? 0}m avg` : `${v ?? 0} blocks`, '']}
                 />
                 <Bar dataKey="value" fill="#059669" radius={[4, 4, 0, 0]} maxBarSize={40} />
               </BarChart>
