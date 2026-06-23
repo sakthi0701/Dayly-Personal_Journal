@@ -5,6 +5,7 @@ import { generateEmbedding } from '@/lib/embeddings';
 import { generateGoDeeperQuestion } from '@/lib/ai/groq';
 import { updateUserStatsOnEntry } from '@/lib/gamification';
 import { stripHtml } from '@/lib/utils/text';
+import { toRelativeDate } from '@/lib/utils/date';
 
 /**
  * POST /api/whatsapp
@@ -118,28 +119,40 @@ export async function POST(request: Request) {
     })();
 
     // ── 7. Build DATED context for Zoro ───────────────────────────────────────
-    // Pull real Supabase entries (last 30 days) with created_at timestamps.
-    // This is the source of truth for WHEN things happened.
     // mem0 is used for semantic relevance; Supabase gives us accurate dates.
-    const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+    // Fall back to querying recent raw entries from Supabase if mem0 returns nothing.
+    let datedContext: { content: string; date: string }[] = [];
+    try {
+      const searchResults = await mem0.search(cleanMessage, { userId: 'default_user', limit: 15 });
+      if (searchResults?.results && searchResults.results.length > 0) {
+        datedContext = searchResults.results.map((res) => ({
+          content: res.memory,
+          date: toRelativeDate(res.createdAt),
+        }));
+      }
+    } catch (e) {
+      console.error('[WhatsApp] mem0 search failed, falling back to recent entries:', e);
+    }
 
-    const { data: recentEntries } = await supabase
-      .from('entries')
-      .select('content, created_at')
-      .gte('created_at', thirtyDaysAgo)
-      .order('created_at', { ascending: false })
-      .limit(20);
+    if (datedContext.length === 0) {
+      const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
+      const { data: recentEntries } = await supabase
+        .from('entries')
+        .select('content, created_at')
+        .gte('created_at', thirtyDaysAgo)
+        .order('created_at', { ascending: false })
+        .limit(20);
 
-    // Build dated context — this is what Zoro actually reads
-    const datedContext: { content: string; date: string }[] = (recentEntries ?? [])
-      .map((e) => ({
-        content: e.content?.trimStart().startsWith('<')
-          ? stripHtml(e.content)   // strip Tiptap HTML from app journal entries
-          : (e.content ?? ''),     // WhatsApp entries are already plain text
-        date: toRelativeDate(e.created_at),
-      }))
-      .filter((e) => e.content.trim().length > 10)  // skip near-empty entries
-      .slice(0, 15);  // cap at 15 for prompt size
+      datedContext = (recentEntries ?? [])
+        .map((e) => ({
+          content: e.content?.trimStart().startsWith('<')
+            ? stripHtml(e.content)   // strip Tiptap HTML from app journal entries
+            : (e.content ?? ''),     // WhatsApp entries are already plain text
+          date: toRelativeDate(e.created_at),
+        }))
+        .filter((e) => e.content.trim().length > 10)  // skip near-empty entries
+        .slice(0, 15);  // cap at 15 for prompt size
+    }
 
     console.log(`[WhatsApp] Built dated context with ${datedContext.length} entries. Generating Go Deeper...`);
 
@@ -157,33 +170,3 @@ export async function POST(request: Request) {
   }
 }
 
-// ─── Helpers ─────────────────────────────────────────────────────────────────
-
-/**
- * Converts an ISO timestamp to a human-readable relative date string.
- * Uses IST for the "today" boundary so day-breaks are user-aligned.
- */
-function toRelativeDate(isoString: string): string {
-  const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
-
-  const entryDateIST = new Date(new Date(isoString).getTime() + IST_OFFSET_MS);
-  const nowIST = new Date(Date.now() + IST_OFFSET_MS);
-
-  // Compare calendar dates in IST
-  const entryDay = new Date(entryDateIST);
-  entryDay.setUTCHours(0, 0, 0, 0);
-
-  const todayDay = new Date(nowIST);
-  todayDay.setUTCHours(0, 0, 0, 0);
-
-  const diffDays = Math.round((todayDay.getTime() - entryDay.getTime()) / (1000 * 60 * 60 * 24));
-
-  if (diffDays === 0) return 'Today';
-  if (diffDays === 1) return 'Yesterday';
-  if (diffDays < 7) return `${diffDays} days ago`;
-  if (diffDays < 10) return '1 week ago';
-  if (diffDays < 17) return '2 weeks ago';
-  if (diffDays < 24) return '3 weeks ago';
-  if (diffDays < 45) return '1 month ago';
-  return `${Math.floor(diffDays / 30)} months ago`;
-}
