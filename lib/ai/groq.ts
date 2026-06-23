@@ -105,7 +105,7 @@ Deliver ONE critical insight about what the user is currently doing. Choose the 
         { role: 'system', content: systemPrompt },
         { role: 'user', content: userMessage },
       ],
-      model: 'llama-3.3-70b-versatile',
+      model: 'openai/gpt-oss-120b',
       temperature: 0.5,
     });
 
@@ -131,8 +131,8 @@ async function summarizeDraftIfNeeded(draft: string): Promise<string> {
         { role: 'system', content: systemPrompt },
         { role: 'user', content: draft },
       ],
-      model: 'llama-3.1-8b-instant',
-      temperature: 0.3,
+      model: 'openai/gpt-oss-120b',
+      temperature: 0.4,
     });
     return completion.choices[0]?.message?.content?.trim() || draft;
   } catch (e) {
@@ -301,9 +301,9 @@ Based on this draft and my past entries, Think of three possible questions and c
         { role: 'system', content: systemPrompt },
         { role: 'user', content: userMessage },
       ],
-      model: 'llama-3.3-70b-versatile',
+      model: 'openai/gpt-oss-120b',
       temperature: 0.6,
-    });
+    }); console.log(systemPrompt); console.log(userMessage);
 
     return (
       completion.choices[0]?.message?.content?.trim() ||

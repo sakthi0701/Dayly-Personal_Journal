@@ -65,16 +65,10 @@ export async function PATCH(
             return NextResponse.json({ error: 'Failed to update entry metadata' }, { status: 500 });
         }
 
-        // 2, 3 & 4. Vector + Memory Operations (Non-blocking background task)
-        (async () => {
-            // Strip HTML to get clean plain text for embedding and memory
-            const plainText = stripHtml(content);
+        // 2, 3 & 4. Vector + Memory Operations (Awaited to prevent premature serverless termination on Vercel)
+        const plainText = stripHtml(content);
 
-            if (!plainText) {
-                console.warn(`Entry ${id} has no plain text after stripping HTML. Skipping vector update.`);
-                return;
-            }
-
+        if (plainText) {
             // 2a. Regenerate and save embedding directly to the entries table
             try {
                 const embedding = await generateEmbedding(plainText);
@@ -118,7 +112,9 @@ export async function PATCH(
                     console.error('Background memory update exception:', e);
                 }
             }
-        })();
+        } else {
+            console.warn(`Entry ${id} has no plain text after stripping HTML. Skipping vector update.`);
+        }
 
         return NextResponse.json({ success: true });
     } catch (error) {
