@@ -46,7 +46,7 @@ export async function PATCH(
         // 0. Verify existence
         const { data: existing, error: fetchErr } = await supabase
             .from('entries')
-            .select('id')
+            .select('id, created_at')
             .eq('id', id)
             .single();
 
@@ -108,6 +108,42 @@ export async function PATCH(
                 try {
                     await mem0.add(plainText, { userId: 'default_user', metadata: { entry_id: id } });
                     console.log(`Memory updated for entry ${id}.`);
+
+                    // 4. Align memory and history created_at timestamps with the original entry's created_at
+                    if (existing.created_at) {
+                        const { data: mems, error: fetchMemsErr } = await supabase
+                            .from('memories')
+                            .select('id, metadata')
+                            .contains('metadata', { entry_id: id });
+
+                        if (!fetchMemsErr && mems && mems.length > 0) {
+                            for (const mem of mems) {
+                                const updatedMetadata = {
+                                    ...(mem.metadata as Record<string, any>),
+                                    createdAt: existing.created_at
+                                };
+                                await supabase
+                                    .from('memories')
+                                    .update({
+                                        metadata: updatedMetadata,
+                                        created_at: existing.created_at,
+                                        updated_at: existing.created_at
+                                    })
+                                    .eq('id', mem.id);
+                            }
+
+                            const memoryIds = mems.map(m => m.id);
+                            await supabase
+                                .from('history')
+                                .update({
+                                    created_at: existing.created_at,
+                                    updated_at: existing.created_at
+                                })
+                                .in('memory_id', memoryIds);
+
+                            console.log(`Aligned memory & history timestamps with entry created_at: ${existing.created_at}`);
+                        }
+                    }
                 } catch (e) {
                     console.error('Background memory update exception:', e);
                 }
