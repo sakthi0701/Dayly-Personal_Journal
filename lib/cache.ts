@@ -12,6 +12,12 @@
 
 import { Preferences } from '@capacitor/preferences';
 import { calculateLevel } from './gamification';
+import { registerPlugin } from '@capacitor/core';
+
+export interface WidgetBroadcasterPlugin {
+  sendUpdate(): Promise<void>;
+}
+const WidgetBroadcaster = registerPlugin<WidgetBroadcasterPlugin>('WidgetBroadcaster');
 
 interface CacheEntry<T> {
   data: T;
@@ -220,6 +226,10 @@ export async function syncWidgetsToNative(
     await Preferences.set({ key: 'widget_tasks', value: JSON.stringify(tasks) });
     await Preferences.set({ key: 'widget_habits', value: JSON.stringify(habits) });
     await Preferences.set({ key: 'widget_goals', value: JSON.stringify(goals) });
+
+    if (typeof window !== 'undefined') {
+      await WidgetBroadcaster.sendUpdate().catch(() => {});
+    }
   } catch (e) {
     console.error('[WidgetSync] Failed to sync widgets to native preferences', e);
   }
@@ -242,6 +252,10 @@ export async function syncTimerToWidget(
     await Preferences.set({ key: 'widget_timer_status', value: status });
     await Preferences.set({ key: 'widget_timer_title', value: isBreak ? 'Break Time' : (taskTitle ?? 'Focus Session') });
     await Preferences.set({ key: 'widget_timer_remaining', value: timeStr });
+
+    if (typeof window !== 'undefined') {
+      await WidgetBroadcaster.sendUpdate().catch(() => {});
+    }
   } catch (e) {
     console.error('[WidgetSync] Timer sync failed', e);
   }
@@ -300,6 +314,10 @@ export async function triggerWidgetDataSync(): Promise<void> {
       await Preferences.set({ key: 'avatar_state', value: current_avatar_state || 'dormant' });
       await Preferences.set({ key: 'level_title', value: level.title });
       await Preferences.set({ key: 'level_progress', value: String(Math.round(level.progressPercent)) });
+
+      if (typeof window !== 'undefined') {
+        await WidgetBroadcaster.sendUpdate().catch(() => {});
+      }
     }
   } catch (e) {
     console.error('[WidgetSync] Data fetch failed', e);

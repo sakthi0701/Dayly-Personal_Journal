@@ -76,23 +76,56 @@ export const useTimerStore = create<TimerStore>((set, get) => ({
       if (raw) {
         const saved = JSON.parse(raw) as TimerState & { _savedAt?: number };
         let restoredElapsed = saved.elapsed ?? 0;
-        
-        if (saved.status === 'running' && saved._savedAt) {
-          const secondsPassed = Math.floor((Date.now() - saved._savedAt) / 1000);
-          restoredElapsed = (saved.duration ?? POMODORO_DURATION) > 0 
-            ? Math.min((saved.elapsed ?? 0) + secondsPassed, saved.duration ?? POMODORO_DURATION)
+        const savedAt = saved._savedAt ?? 0;
+        const plannedDuration = saved.duration ?? POMODORO_DURATION;
+
+        if (saved.status === 'running' && savedAt) {
+          const secondsPassed = Math.floor((Date.now() - savedAt) / 1000);
+
+          // ── BUG-3: Stale session guard ──────────────────────────────────────
+          // If we've been away for more than 3× the planned duration, the session
+          // spans midnight or the user walked away. Abandon the block silently
+          // rather than saving a corrupt cross-day session to the DB.
+          const MAX_STALE_SECONDS = plannedDuration > 0 ? plannedDuration * 3 : 3 * 60 * 60;
+          if (secondsPassed > MAX_STALE_SECONDS && saved.blockId) {
+            console.warn('[timer/init] stale session detected — auto-abandoning block', saved.blockId);
+            // Fire-and-forget: abandon API call. We still load as idle.
+            fetch('/api/timer/abandon', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                blockId: saved.blockId,
+                duration: restoredElapsed,
+                total_duration: plannedDuration,
+                failed_reason: 'stale_session_auto_abandon',
+              }),
+            }).catch((e) => console.error('[timer/init] abandon fetch failed', e));
+
+            localStorage.removeItem(LS_KEY);
+            set({ isLoaded: true });
+            // Setup tick interval below and return
+            setInterval(() => {
+              const state = get();
+              if (state.status === 'running') state.tick();
+            }, 500);
+            return;
+          }
+          // ─────────────────────────────────────────────────────────────────────
+
+          restoredElapsed = plannedDuration > 0
+            ? Math.min((saved.elapsed ?? 0) + secondsPassed, plannedDuration)
             : (saved.elapsed ?? 0) + secondsPassed;
         }
 
         const remaining = (saved.mode ?? 'pomodoro') === 'pomodoro'
-          ? Math.max(0, (saved.duration ?? POMODORO_DURATION) - restoredElapsed)
+          ? Math.max(0, plannedDuration - restoredElapsed)
           : restoredElapsed;
 
         set({
           status: saved.status ?? 'idle',
           mode: saved.mode ?? 'pomodoro',
           elapsed: restoredElapsed,
-          duration: saved.duration ?? POMODORO_DURATION,
+          duration: plannedDuration,
           blockId: saved.blockId ?? null,
           task: saved.task ?? null,
           strictMode: saved.strictMode ?? false,
@@ -159,7 +192,7 @@ export const useTimerStore = create<TimerStore>((set, get) => ({
         }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.error);
+      if (!res.ok) throw new Error(data.error ?? 'Server error');
 
       const duration = get().duration;
       const remaining = get().mode === 'pomodoro' ? duration : 0;
@@ -167,7 +200,7 @@ export const useTimerStore = create<TimerStore>((set, get) => ({
       set({
         status: 'running',
         elapsed: 0,
-        blockId: data.blockId,
+        blockId: data.blockId,  // null if server failed — BUG-2: session runs client-only
         task,
         strictMode,
         lastTick: Date.now(),
@@ -176,7 +209,10 @@ export const useTimerStore = create<TimerStore>((set, get) => ({
         remaining,
       });
     } catch (err) {
-      console.error('Failed to start timer:', err);
+      // BUG-2: Network offline at start — timer runs but blockId stays null.
+      // Session will not be persisted to DB. We still allow the timer to run
+      // so the user's focus session isn't blocked by a network hiccup.
+      console.error('[timer/start] Failed — session will run offline (no DB save):', err);
     }
   },
 
@@ -189,13 +225,16 @@ export const useTimerStore = create<TimerStore>((set, get) => ({
   },
 
   completeTimer: async (reviewData) => {
-    const { blockId, elapsed, task, notToDoItems, mode } = get();
+    // BUG-4: Capture all values before set() so the API call uses pre-mutation state.
+    const { blockId, elapsed, task, notToDoItems, mode, duration } = get();
 
     const updatedTask = task ? { ...task, elapsed_pomodoros: task.elapsed_pomodoros + (mode === 'pomodoro' ? 1 : 0) } : null;
 
+    // Clear blockId immediately to prevent double-saves if Mark Done is clicked twice.
     set({
       status: 'completed',
       task: updatedTask,
+      blockId: null,
     });
 
     if (!blockId) return null;
@@ -206,7 +245,7 @@ export const useTimerStore = create<TimerStore>((set, get) => ({
         body: JSON.stringify({
           blockId,
           duration: elapsed,
-          total_duration: get().duration,  // planned session length for 20% threshold
+          total_duration: duration,  // BUG-4 fix: captured before set()
           task_id: task?.id ?? null,
           not_to_do_selected: notToDoItems,
           triggered_distractions: reviewData?.triggeredDistractions ?? [],

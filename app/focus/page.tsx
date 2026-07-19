@@ -248,7 +248,7 @@ export default function FocusPage() {
   const task = useTimer(state => state.task);
   const notToDoItems = useTimer(state => state.notToDoItems);
   const isBreak = useTimer(state => state.isBreak);
-  const elapsed = useTimer(state => state.status === 'completed' ? state.elapsed : 0);
+  const elapsed = useTimer(state => state.elapsed);
   const startTimer = useTimer(state => state.startTimer);
   const abandonTimer = useTimer(state => state.abandonTimer);
   const extendTimer = useTimer(state => state.extendTimer);
@@ -268,7 +268,17 @@ export default function FocusPage() {
 
   // Track completion trigger — we want to show review sheet when work session completes
   const prevStatus = useRef(state.status);
+  const didInitCheck = useRef(false);
   useEffect(() => {
+    // On first mount: if the timer already completed while user was on another page,
+    // immediately show the review sheet (the running→completed transition was missed).
+    if (!didInitCheck.current) {
+      didInitCheck.current = true;
+      if (state.status === 'completed' && !state.isBreak) {
+        setShowReviewSheet(true);
+      }
+    }
+
     if (prevStatus.current === 'running' && state.status === 'completed') {
       if (!state.isBreak) {
         // Work session just completed — show review

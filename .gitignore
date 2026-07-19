@@ -65,3 +65,4 @@ _bmad-output/
 
 .vercel
 lib/schema_phase13.sql
+../docs/migration_goal_linking.sql

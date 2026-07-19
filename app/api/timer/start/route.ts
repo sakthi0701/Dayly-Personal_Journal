@@ -6,6 +6,9 @@ export async function POST(request: Request) {
     const body = await request.json();
     const { task_id, mode = 'pomodoro', strict_mode = false } = body;
 
+    // Validate task_id against both tasks and pressure_tasks.
+    // time_blocks.task_id FK only points to tasks, so pressure task sessions
+    // always store task_id = null in the DB (same behaviour as the complete route).
     let validTaskId: string | null = null;
     if (task_id) {
       const { data: task } = await supabase
@@ -13,8 +16,21 @@ export async function POST(request: Request) {
         .select('id')
         .eq('id', task_id)
         .single();
+
       if (task) {
         validTaskId = task.id;
+      } else {
+        // Check pressure_tasks so we at least know the ID is valid.
+        // FK constraint means we still store null, matching complete route behaviour.
+        const { data: pt } = await supabase
+          .from('pressure_tasks')
+          .select('id')
+          .eq('id', task_id)
+          .single();
+        if (!pt) {
+          console.warn(`[timer/start] task_id ${task_id} not found in tasks or pressure_tasks`);
+        }
+        // validTaskId stays null — pressure tasks are tracked by title only
       }
     }
 

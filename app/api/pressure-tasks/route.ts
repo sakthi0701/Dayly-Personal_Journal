@@ -31,7 +31,7 @@ export async function GET(request: Request) {
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { title, priority = 1, deadline, estimated_minutes } = body;
+    const { title, priority = 1, deadline, estimated_minutes, goal_id } = body;
     if (!title?.trim()) {
       return NextResponse.json({ error: 'title is required' }, { status: 400 });
     }
@@ -43,11 +43,24 @@ export async function POST(request: Request) {
         priority,
         deadline: deadline ?? null,
         estimated_minutes: estimated_minutes ?? null,
+        goal_id: goal_id ?? null,
         status: 'todo',
       })
       .select()
       .single();
     if (error) throw error;
+
+    // Increment goal total_task_count when a pressure task is linked to a goal.
+    if (goal_id) {
+      const { error: counterErr } = await supabase.rpc('increment_goal_total', { goal_id_input: goal_id });
+      if (counterErr) {
+        // Fallback: manual read-increment
+        const { data: g } = await supabase.from('goals').select('total_task_count').eq('id', goal_id).single();
+        if (g) {
+          await supabase.from('goals').update({ total_task_count: (g.total_task_count ?? 0) + 1 }).eq('id', goal_id);
+        }
+      }
+    }
 
     return NextResponse.json({ task: data }, { status: 201 });
   } catch (err) {

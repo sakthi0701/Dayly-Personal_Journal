@@ -7,25 +7,25 @@ export async function GET() {
   try {
     const { data: goals, error } = await supabase
       .from('goals')
-      .select('*, tasks(id, status)')
+      .select('*')
       .order('deadline', { ascending: true, nullsFirst: false })
       .order('created_at', { ascending: false });
 
     if (error) throw error;
 
-    // Enrich with days_remaining and real task progress
     const today = new Date();
     today.setHours(0, 0, 0, 0);
 
     const enriched = (goals || []).map((g) => {
-      // Calculate real task progress
-      const linkedTasks = g.tasks || [];
-      const totalTasks = linkedTasks.length;
-      const completedTasks = linkedTasks.filter((t: any) => t.status === 'done').length;
-      const progressPct = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;
+      // Use stored counters for delete-safe progress.
+      // completed_task_count/total_task_count are incremented on task create/done,
+      // never decremented on delete — so progress survives task cleanup.
+      const total = g.total_task_count ?? 0;
+      const completed = g.completed_task_count ?? 0;
+      const progressPct = total > 0 ? Math.round((completed / total) * 100) : 0;
 
       if (!g.deadline) return { ...g, days_remaining: null, progress_pct: progressPct };
-      
+
       const deadline = new Date(g.deadline);
       deadline.setHours(0, 0, 0, 0);
       const daysRemaining = Math.ceil((deadline.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
@@ -39,6 +39,7 @@ export async function GET() {
     return NextResponse.json({ error: 'Failed to fetch goals' }, { status: 500 });
   }
 }
+
 
 export async function POST(request: Request) {
   try {

@@ -111,6 +111,18 @@ export async function POST(request: Request) {
       if (tagError) throw tagError;
     }
 
+    // Increment goal total_task_count when a task is linked to a goal.
+    if (goal_id) {
+      const { error: counterErr } = await supabase.rpc('increment_goal_total', { goal_id_input: goal_id });
+      if (counterErr) {
+        // Fallback: manual read-increment if RPC not available
+        const { data: g } = await supabase.from('goals').select('total_task_count').eq('id', goal_id).single();
+        if (g) {
+          await supabase.from('goals').update({ total_task_count: (g.total_task_count ?? 0) + 1 }).eq('id', goal_id);
+        }
+      }
+    }
+
     return NextResponse.json({ task }, { status: 201 });
   } catch (err) {
     console.error('[POST /api/tasks]', err);

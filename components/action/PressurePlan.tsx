@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useRef } from 'react';
-import { Plus, Trash2, Check, Clock, AlertTriangle, ChevronDown, Flame, Bell, GripVertical } from 'lucide-react';
+import { Plus, Trash2, Check, Clock, AlertTriangle, ChevronDown, Flame, Bell, GripVertical, Target } from 'lucide-react';
 import {
   DndContext,
   closestCenter,
@@ -30,6 +30,7 @@ interface PressureTask {
   sort_order: number;
   completed_at: string | null;
   created_at: string;
+  goal_id?: string | null;
 }
 
 const PRIORITY_CONFIG = {
@@ -62,11 +63,12 @@ function getDeadlineStatus(deadline: string | null): {
 
 // ─── Add Form ─────────────────────────────────────────────────────────────────
 
-function AddForm({ onAdd, onCancel }: { onAdd: (t: Partial<PressureTask>) => void; onCancel: () => void }) {
+function AddForm({ onAdd, onCancel, goals = [] }: { onAdd: (t: Partial<PressureTask>) => void; onCancel: () => void; goals?: any[] }) {
   const [title, setTitle] = useState('');
   const [priority, setPriority] = useState(1);
   const [deadline, setDeadline] = useState('');
   const [estimatedMins, setEstimatedMins] = useState('');
+  const [goalId, setGoalId] = useState('');
 
   const handleSubmit = () => {
     if (!title.trim()) return;
@@ -75,6 +77,7 @@ function AddForm({ onAdd, onCancel }: { onAdd: (t: Partial<PressureTask>) => voi
       priority,
       deadline: deadline ? new Date(deadline).toISOString() : null,
       estimated_minutes: estimatedMins ? parseInt(estimatedMins, 10) : null,
+      goal_id: goalId || null,
     });
   };
 
@@ -142,6 +145,25 @@ function AddForm({ onAdd, onCancel }: { onAdd: (t: Partial<PressureTask>) => voi
           />
         </div>
       </div>
+
+      {/* Goal Link */}
+      {goals.length > 0 && (
+        <div>
+          <label className="text-xs text-zinc-500 flex items-center gap-1.5 mb-1">
+            <Target className="w-3 h-3" /> Link to Goal
+          </label>
+          <select
+            value={goalId}
+            onChange={(e) => setGoalId(e.target.value)}
+            className="w-full px-2 py-1.5 bg-zinc-800 border border-zinc-700 rounded-lg text-xs text-zinc-300 focus:outline-none focus:border-indigo-500 transition-all"
+          >
+            <option value="">No goal linked</option>
+            {goals.map((g) => (
+              <option key={g.id} value={g.id}>{g.title}</option>
+            ))}
+          </select>
+        </div>
+      )}
 
       <div className="flex justify-end gap-2">
         <button
@@ -316,6 +338,7 @@ function PressureTaskCard({
 
 export default function PressurePlan() {
   const [tasks, setTasks] = useState<PressureTask[]>([]);
+  const [goals, setGoals] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
@@ -360,6 +383,14 @@ export default function PressurePlan() {
       const res = await fetch('/api/pressure-tasks');
       const data = await res.json();
       setTasks(data.tasks ?? []);
+
+      try {
+        const goalsRes = await fetch('/api/goals');
+        const goalsData = await goalsRes.json();
+        setGoals(goalsData.goals?.filter((g: any) => g.status === 'active') ?? []);
+      } catch (err) {
+        console.warn('Failed to load goals for dropdown', err);
+      }
     } catch {
       showToast('Failed to load tasks');
     } finally {
@@ -446,7 +477,7 @@ export default function PressurePlan() {
       </div>
 
       {/* Add form */}
-      {showForm && <AddForm onAdd={handleAdd} onCancel={() => setShowForm(false)} />}
+      {showForm && <AddForm onAdd={handleAdd} onCancel={() => setShowForm(false)} goals={goals} />}
 
       {/* XP legend */}
       <div className="flex items-center gap-4 text-xs text-zinc-600">

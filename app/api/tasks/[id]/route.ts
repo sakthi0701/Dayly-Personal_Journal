@@ -26,6 +26,13 @@ export async function PATCH(request: Request, context: RouteContext) {
       return NextResponse.json({ error: 'No valid fields to update' }, { status: 400 });
     }
 
+    // Get existing task to check previous status for goal progress tracking
+    const { data: existingTask } = await supabase
+      .from('tasks')
+      .select('status, goal_id')
+      .eq('id', id)
+      .single();
+
     const { data: task, error } = await supabase
       .from('tasks')
       .update(updates)
@@ -47,9 +54,22 @@ export async function PATCH(request: Request, context: RouteContext) {
       }
     }
 
-    // Grant XP when task is completed
-    if (updates.status === 'done') {
+    // Grant XP when task is completed (only on transition)
+    if (updates.status === 'done' && existingTask?.status !== 'done') {
       await addXP(20);
+
+      // Increment completed_task_count for the goal
+      const targetGoalId = updates.goal_id !== undefined ? updates.goal_id : existingTask?.goal_id;
+      if (targetGoalId) {
+        const { error: counterErr } = await supabase.rpc('increment_goal_completed', { goal_id_input: targetGoalId });
+        if (counterErr) {
+          // Fallback: manual read-increment
+          const { data: g } = await supabase.from('goals').select('completed_task_count').eq('id', targetGoalId).single();
+          if (g) {
+            await supabase.from('goals').update({ completed_task_count: (g.completed_task_count ?? 0) + 1 }).eq('id', targetGoalId);
+          }
+        }
+      }
     }
 
     return NextResponse.json({ task });
