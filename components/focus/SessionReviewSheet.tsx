@@ -17,7 +17,7 @@ interface Props {
     triggeredDistractions: NotToDoItem[];
     completionNote: string;
   }) => void;
-  xpResult: { xpEarned: number; xpDeducted: number; cleanSession: boolean } | null;
+  xpResult: { xpEarned: number; xpDeducted: number; cleanSession: boolean; untracked?: boolean } | null;
   isSubmitting: boolean;
 }
 
@@ -57,6 +57,52 @@ export default function SessionReviewSheet({
   // ── Post-submit: XP result display ─────────────────────────────────────────
   if (submitted && xpResult) {
     const net = xpResult.xpEarned - xpResult.xpDeducted;
+
+    // ── Untracked session (blockId was null — started offline or cross-midnight) ──
+    if (xpResult.untracked) {
+      return (
+        <div className="fixed inset-0 z-50 flex items-end justify-center sm:items-center p-4">
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
+          <div className="relative w-full max-w-sm bg-zinc-900 border border-zinc-700 rounded-2xl p-6 text-center shadow-2xl animate-slide-up">
+            <div className="text-4xl mb-2">⚠️</div>
+            <h2 className="text-lg font-bold text-white">Session Not Saved</h2>
+            <p className="text-sm text-zinc-400 mt-2">
+              This session started without a connection to the server, so it wasn&apos;t recorded in the database.
+            </p>
+            <p className="text-xs text-zinc-600 mt-1 mb-5">
+              🍅 {Math.round(sessionMinutes)}m of focus time (local only)
+            </p>
+            <div className="flex flex-col gap-2.5">
+              <button
+                onClick={() => {
+                  setDuration(5);
+                  startTimer(null, false, [], true);
+                }}
+                className="w-full py-3 bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-semibold rounded-xl transition-all flex items-center justify-center gap-2 shadow-lg shadow-emerald-600/20"
+              >
+                <Coffee className="w-4 h-4" /> Take Break (5m)
+              </button>
+              <button
+                onClick={() => {
+                  setDuration(25);
+                  startTimer(task, strictMode, notToDoItems, false);
+                }}
+                className="w-full py-3 bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-semibold rounded-xl transition-all flex items-center justify-center gap-2 shadow-lg shadow-indigo-600/20"
+              >
+                <RotateCcw className="w-4 h-4" /> Start Another Session (25m)
+              </button>
+              <button
+                onClick={() => abandonTimer()}
+                className="w-full py-2.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 hover:text-white text-sm font-medium rounded-xl transition-all"
+              >
+                Done for Now
+              </button>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
     return (
       <div className="fixed inset-0 z-50 flex items-end justify-center sm:items-center p-4">
         <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
@@ -141,6 +187,7 @@ export default function SessionReviewSheet({
       </div>
     );
   }
+
 
   // ── Waiting for result after submit ──────────────────────────────────────────
   if (submitted) {

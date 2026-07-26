@@ -121,18 +121,31 @@ export const useTimerStore = create<TimerStore>((set, get) => ({
           ? Math.max(0, plannedDuration - restoredElapsed)
           : restoredElapsed;
 
+        // ── BUG-5: Completed + no blockId guard ──────────────────────────────
+        // If state was saved as 'completed' but blockId is null (offline start or
+        // cross-midnight page reload after completeTimer cleared blockId), there is
+        // no DB record to update. Showing the review sheet in this case causes an
+        // infinite spinner. Reset to idle instead.
+        const restoredStatus =
+          saved.status === 'completed' && !saved.blockId ? 'idle' : (saved.status ?? 'idle');
+        if (restoredStatus === 'idle' && saved.status === 'completed' && !saved.blockId) {
+          console.warn('[timer/init] completed session has no blockId — resetting to idle');
+          localStorage.removeItem(LS_KEY);
+        }
+        // ─────────────────────────────────────────────────────────────────────
+
         set({
-          status: saved.status ?? 'idle',
+          status: restoredStatus,
           mode: saved.mode ?? 'pomodoro',
-          elapsed: restoredElapsed,
+          elapsed: restoredStatus === 'idle' ? 0 : restoredElapsed,
           duration: plannedDuration,
           blockId: saved.blockId ?? null,
-          task: saved.task ?? null,
+          task: restoredStatus === 'idle' ? null : (saved.task ?? null),
           strictMode: saved.strictMode ?? false,
-          lastTick: saved.status === 'running' ? Date.now() : (saved.lastTick ?? 0),
-          notToDoItems: saved.notToDoItems ?? [],
+          lastTick: restoredStatus === 'running' ? Date.now() : (saved.lastTick ?? 0),
+          notToDoItems: restoredStatus === 'idle' ? [] : (saved.notToDoItems ?? []),
           isBreak: saved.isBreak ?? false,
-          remaining,
+          remaining: restoredStatus === 'idle' ? plannedDuration : remaining,
           isLoaded: true,
         });
       } else {

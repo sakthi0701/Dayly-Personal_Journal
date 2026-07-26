@@ -263,7 +263,7 @@ export default function FocusPage() {
   // Phase 13: Not-to-do + review state
   const [selectedNotToDos, setSelectedNotToDos] = useState<NotToDoItem[]>([]);
   const [showReviewSheet, setShowReviewSheet] = useState(false);
-  const [reviewResult, setReviewResult] = useState<{ xpEarned: number; xpDeducted: number; cleanSession: boolean } | null>(null);
+  const [reviewResult, setReviewResult] = useState<{ xpEarned: number; xpDeducted: number; cleanSession: boolean; untracked?: boolean } | null>(null);
   const [isSubmittingReview, setIsSubmittingReview] = useState(false);
 
   // Track completion trigger — we want to show review sheet when work session completes
@@ -357,7 +357,9 @@ export default function FocusPage() {
         triggeredDistractions: data.triggeredDistractions,
         completionNote: data.completionNote,
       });
-      setReviewResult(result);
+      // If result is null, blockId was missing (offline/untracked session).
+      // Provide a synthetic fallback so the review sheet can exit the spinner state.
+      setReviewResult(result ?? { xpEarned: 0, xpDeducted: 0, cleanSession: false, untracked: true });
     } finally {
       setIsSubmittingReview(false);
     }
