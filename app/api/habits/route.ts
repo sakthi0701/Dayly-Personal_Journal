@@ -29,7 +29,12 @@ export async function GET() {
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { name, icon, color, frequency, habit_type } = body;
+    const { name, icon, color, frequency, habit_type, weekly_goal } = body;
+
+    const resolvedFrequency = frequency ?? {
+      type: 'weekly',
+      weekly_goal: weekly_goal ?? 3,
+    };
 
     const { data: habit, error } = await supabase
       .from('habits')
@@ -37,7 +42,7 @@ export async function POST(request: Request) {
         name,
         icon: icon ?? '✨',
         color: color ?? 'indigo',
-        frequency: frequency ?? { type: 'daily' },
+        frequency: resolvedFrequency,
         habit_type: habit_type ?? 'good',
       })
       .select()

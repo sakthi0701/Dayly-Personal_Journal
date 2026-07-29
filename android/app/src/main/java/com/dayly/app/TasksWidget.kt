@@ -13,7 +13,7 @@ import android.widget.RemoteViews
 class TasksWidget : AppWidgetProvider() {
 
     companion object {
-        private const val PREFS_FILE = "DaylyCache"
+        private const val PREFS_FILE = "CapacitorStorage"
         private const val ACTION_UPDATE = "com.dayly.WIDGET_UPDATE"
     }
 

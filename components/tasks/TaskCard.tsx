@@ -18,6 +18,9 @@ export interface Task {
   due_date?: string | null;
   parent_task_id?: string | null;
   goal_id?: string | null;
+  is_recurring?: boolean;
+  recurrence_rule?: string | null;
+  recurrence_end_date?: string | null;
   position: number;
   tags: Tag[];
   created_at: string;
@@ -183,6 +186,36 @@ export default function TaskCard({ task, onUpdate, onDelete, onAddSubtask, onEdi
           {/* Meta row */}
           <div className="flex items-center flex-wrap gap-x-3 gap-y-1 mt-2">
             <PomodoroRow total={task.estimated_pomodoros} elapsed={task.elapsed_pomodoros} />
+
+            {task.is_recurring && (() => {
+              const rule = task.recurrence_rule ?? '';
+              let label = 'Weekly';
+              if (rule.startsWith('days:')) {
+                const days = rule.replace('days:', '').split(',').map((n) => parseInt(n, 10)).filter((n) => !isNaN(n));
+                const sorted = [...days].sort((a, b) => (a === 0 ? 7 : a) - (b === 0 ? 7 : b));
+                const names = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+                if (days.length === 7) {
+                  label = 'Daily';
+                } else if (days.length === 5 && !days.includes(0) && !days.includes(6)) {
+                  label = 'Weekdays';
+                } else if (days.length === 2 && days.includes(0) && days.includes(6)) {
+                  label = 'Weekends';
+                } else if (sorted.length > 0) {
+                  label = sorted.map((d) => names[d]).join(', ');
+                }
+              } else {
+                const m = rule.match(/^(\d+)x-weekly$/);
+                if (m) {
+                  const n = parseInt(m[1], 10);
+                  label = n === 7 ? 'Daily' : n === 1 ? '1×/week' : `${n}×/week`;
+                }
+              }
+              return (
+                <span className="text-[10px] font-semibold text-violet-400 bg-violet-500/10 border border-violet-500/20 rounded-full px-2 py-0.5">
+                  🔁 {label}
+                </span>
+              );
+            })()}
 
             {task.due_date && (
               <span className={`text-[11px] font-medium ${overdue ? 'text-red-400' : 'text-zinc-500'}`}>

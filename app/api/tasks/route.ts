@@ -66,6 +66,7 @@ export async function POST(request: Request) {
       parent_task_id,
       is_recurring,
       recurrence_rule,
+      recurrence_end_date,
       tagIds = [],
       goal_id,
     } = body;
@@ -96,6 +97,7 @@ export async function POST(request: Request) {
         parent_task_id: parent_task_id ?? null,
         is_recurring: is_recurring ?? false,
         recurrence_rule: recurrence_rule ?? null,
+        recurrence_end_date: recurrence_end_date ?? null,
         position,
         goal_id: goal_id ?? null,
       })

@@ -24,6 +24,7 @@ export const viewport = {
 
 import NotificationManager from "@/components/layout/NotificationManager";
 import WidgetSync from "@/components/layout/WidgetSync";
+import CheckInDialog from "@/components/layout/CheckInDialog";
 
 export default function RootLayout({
   children,
@@ -44,6 +45,7 @@ export default function RootLayout({
             {/* Global floating timer UI — persists across all pages */}
             <GlobalTimerUI />
             <NotificationManager />
+            <CheckInDialog />
             <WidgetSync />
           </SidebarProvider>
         </LockProvider>

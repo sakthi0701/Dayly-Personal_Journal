@@ -13,7 +13,7 @@ import org.json.JSONException
 class GoalsWidget : AppWidgetProvider() {
 
     companion object {
-        private const val PREFS_FILE = "DaylyCache"
+        private const val PREFS_FILE = "CapacitorStorage"
         private const val KEY_GOALS = "widget_goals"
     }
 

@@ -29,12 +29,17 @@ export async function PATCH(
   try {
     const { id } = await params;
     const body = await request.json();
-    const { name, color, frequency } = body;
+    const { name, color, frequency, weekly_goal } = body;
 
     const updates: Record<string, unknown> = {};
     if (name !== undefined)      updates.name = name;
     if (color !== undefined)     updates.color = color;
     if (frequency !== undefined) updates.frequency = frequency;
+    // Allow patching just weekly_goal by merging into existing frequency
+    if (weekly_goal !== undefined) {
+      const { data: existing } = await supabase.from('habits').select('frequency').eq('id', id).single();
+      updates.frequency = { ...(existing?.frequency ?? { type: 'weekly' }), weekly_goal };
+    }
 
     const { data: habit, error } = await supabase
       .from('habits')

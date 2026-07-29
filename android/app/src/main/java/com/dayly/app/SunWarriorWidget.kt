@@ -11,7 +11,7 @@ import android.widget.RemoteViews
 class SunWarriorWidget : AppWidgetProvider() {
 
     companion object {
-        private const val PREFS_FILE = "DaylyCache"
+        private const val PREFS_FILE = "CapacitorStorage"
         private const val KEY_STREAK = "streak_days"
         private const val KEY_XP     = "xp"
         const val ACTION_REFRESH = "com.dayly.WIDGET_UPDATE"

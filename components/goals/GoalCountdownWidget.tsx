@@ -255,14 +255,27 @@ export default function GoalCountdownWidget() {
                         </button>
                       </div>
                     </div>
-                    <div className="h-1.5 bg-zinc-800 rounded-full overflow-hidden">
-                      <div className={`h-full rounded-full transition-all duration-700 ${colors.bar}`} style={{ width: `${goal.progress_pct}%` }} />
-                    </div>
-                    <div className="flex justify-between mt-1.5">
-                      <span className="text-[10px] text-zinc-600">Start</span>
-                      <span className={`text-[10px] font-medium ${colors.text}`}>{goal.progress_pct}% tasks completed</span>
-                      <span className="text-[10px] text-zinc-600">Deadline</span>
-                    </div>
+                    {/* Progress bar — only show when we have a bounded total */}
+                    {(goal as Goal & { total_task_count?: number; completed_task_count?: number }).total_task_count ? (
+                      <>
+                        <div className="h-1.5 bg-zinc-800 rounded-full overflow-hidden">
+                          <div className={`h-full rounded-full transition-all duration-700 ${colors.bar}`} style={{ width: `${goal.progress_pct}%` }} />
+                        </div>
+                        <div className="flex justify-between mt-1.5">
+                          <span className="text-[10px] text-zinc-600">Start</span>
+                          <span className={`text-[10px] font-medium ${colors.text}`}>{goal.progress_pct}% tasks completed</span>
+                          <span className="text-[10px] text-zinc-600">Deadline</span>
+                        </div>
+                      </>
+                    ) : (
+                      /* Unbounded recurring tasks — show raw completion counter */
+                      <div className="flex items-center gap-2 mt-1">
+                        <span className="text-[10px] font-semibold text-violet-400 bg-violet-500/10 border border-violet-500/20 rounded-full px-2 py-0.5">
+                          🔁 {(goal as Goal & { completed_task_count?: number }).completed_task_count ?? 0} completions
+                        </span>
+                        <span className="text-[10px] text-zinc-600">ongoing · next task queued weekly</span>
+                      </div>
+                    )}
                   </>
                 )}
               </div>

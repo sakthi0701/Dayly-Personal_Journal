@@ -1,7 +1,10 @@
 'use client';
 
 import { useState, useEffect } from 'react';
-import { Plus, Flame, Trash2, X, Loader2, TrendingUp, ShieldCheck, AlertOctagon, Pencil, Check } from 'lucide-react';
+import {
+  Plus, Flame, Trash2, X, Loader2, TrendingUp, ShieldCheck,
+  AlertOctagon, Pencil, Check, CalendarDays,
+} from 'lucide-react';
 
 interface HabitLog {
   id: string;
@@ -15,77 +18,185 @@ interface Habit {
   icon?: string;
   color: string | null;
   habit_type: 'good' | 'bad' | null;
-  frequency: { type: string } | null;
+  frequency: { type: string; weekly_goal?: number } | null;
   created_at: string;
   habit_logs: HabitLog[];
 }
 
-// Always returns a valid color — the null crash fix
-const COLOR_MAP: Record<string, { dot: string; bar: string; success: string }> = {
-  indigo:  { dot: 'bg-indigo-500',  bar: 'bg-indigo-500',  success: 'bg-indigo-500/20 text-indigo-300 border-indigo-500/30' },
-  violet:  { dot: 'bg-violet-500',  bar: 'bg-violet-500',  success: 'bg-violet-500/20 text-violet-300 border-violet-500/30' },
-  emerald: { dot: 'bg-emerald-500', bar: 'bg-emerald-500', success: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30' },
-  amber:   { dot: 'bg-amber-500',   bar: 'bg-amber-500',   success: 'bg-amber-500/20 text-amber-300 border-amber-500/30' },
-  rose:    { dot: 'bg-rose-500',    bar: 'bg-rose-500',    success: 'bg-rose-500/20 text-rose-300 border-rose-500/30' },
-  sky:     { dot: 'bg-sky-500',     bar: 'bg-sky-500',     success: 'bg-sky-500/20 text-sky-300 border-sky-500/30' },
+// ─── Colour palette ───────────────────────────────────────────────────────────
+const COLOR_MAP: Record<string, { dot: string; bar: string; success: string; fill: string }> = {
+  indigo:  { dot: 'bg-indigo-500',  bar: 'bg-indigo-500',  success: 'bg-indigo-500/20 text-indigo-300 border-indigo-500/30',  fill: '#6366f1' },
+  violet:  { dot: 'bg-violet-500',  bar: 'bg-violet-500',  success: 'bg-violet-500/20 text-violet-300 border-violet-500/30',  fill: '#8b5cf6' },
+  emerald: { dot: 'bg-emerald-500', bar: 'bg-emerald-500', success: 'bg-emerald-500/20 text-emerald-300 border-emerald-500/30', fill: '#10b981' },
+  amber:   { dot: 'bg-amber-500',   bar: 'bg-amber-500',   success: 'bg-amber-500/20 text-amber-300 border-amber-500/30',   fill: '#f59e0b' },
+  rose:    { dot: 'bg-rose-500',    bar: 'bg-rose-500',    success: 'bg-rose-500/20 text-rose-300 border-rose-500/30',    fill: '#f43f5e' },
+  sky:     { dot: 'bg-sky-500',     bar: 'bg-sky-500',     success: 'bg-sky-500/20 text-sky-300 border-sky-500/30',     fill: '#0ea5e9' },
 };
 const COLORS = Object.keys(COLOR_MAP);
 const safeColor = (c: string | null) => COLOR_MAP[c ?? ''] ?? COLOR_MAP.indigo;
 
+// ─── Date utilities ───────────────────────────────────────────────────────────
 function getLocalDateStr(date: Date): string {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
 }
 
-function calcStreak(habit: Habit): number {
-  const today = new Date();
-  const createdDate = new Date(habit.created_at);
-  createdDate.setHours(0, 0, 0, 0); // normalize
+/** Returns the Monday of the ISO week containing `date` */
+function getWeekStart(date: Date): Date {
+  const d = new Date(date);
+  const day = d.getDay(); // 0=Sun, 1=Mon…
+  const diff = (day === 0 ? -6 : 1 - day); // shift so Monday = start
+  d.setDate(d.getDate() + diff);
+  d.setHours(0, 0, 0, 0);
+  return d;
+}
 
-  const isBad = habit.habit_type === 'bad';
+/** Count successful logs in a given Mon–Sun week (identified by its Monday date) */
+function countWeekCompletions(habit: Habit, weekMonday: Date): number {
+  const weekEnd = new Date(weekMonday);
+  weekEnd.setDate(weekEnd.getDate() + 6);
+  weekEnd.setHours(23, 59, 59, 999);
+
+  return habit.habit_logs.filter((l) => {
+    const d = new Date(l.logged_at);
+    return d >= weekMonday && d <= weekEnd && l.status === 'success';
+  }).length;
+}
+
+/** Current week Mon–Sun dates (7 elements) */
+function getCurrentWeekDays(): Date[] {
+  const monday = getWeekStart(new Date());
+  return Array.from({ length: 7 }, (_, i) => {
+    const d = new Date(monday);
+    d.setDate(d.getDate() + i);
+    return d;
+  });
+}
+
+/** Compute weekly streak: consecutive past weeks (not counting current) where completions >= goal */
+function calcWeeklyStreak(habit: Habit, weeklyGoal: number): number {
+  const createdDate = new Date(habit.created_at);
+  createdDate.setHours(0, 0, 0, 0);
   let streak = 0;
 
-  for (let i = 0; i < 90; i++) {
-    const d = new Date();
-    d.setDate(today.getDate() - i);
-    d.setHours(0, 0, 0, 0);
+  for (let weeksBack = 1; weeksBack <= 52; weeksBack++) {
+    const refDate = new Date();
+    refDate.setDate(refDate.getDate() - weeksBack * 7);
+    const monday = getWeekStart(refDate);
 
-    if (d < createdDate) break; // Don't count days before the habit existed
+    if (monday < createdDate) break; // don't count before habit existed
 
-    const dateStr = getLocalDateStr(d);
-    const log = habit.habit_logs.find((l) => getLocalDateStr(new Date(l.logged_at)) === dateStr);
-
-    if (isBad) {
-      if (!log || log.status === 'success') {
-        streak++;
-      } else if (i === 0) {
-        continue; // if failed today, the current streak is 0, but we break on the else. Actually wait.
-        // If it's a bad habit and they failed today, the streak IS broken (streak = 0). 
-        // We shouldn't continue, we should break. So let's fall through to break.
-      } else {
-        break;
-      }
+    const completions = countWeekCompletions(habit, monday);
+    if (habit.habit_type === 'bad') {
+      // Bad habit: streak = weeks with ZERO failures
+      const failures = habit.habit_logs.filter((l) => {
+        const d = new Date(l.logged_at);
+        const weekEnd = new Date(monday);
+        weekEnd.setDate(weekEnd.getDate() + 6);
+        weekEnd.setHours(23, 59, 59, 999);
+        return d >= monday && d <= weekEnd && l.status === 'failed';
+      }).length;
+      if (failures === 0) streak++;
+      else break;
     } else {
-      if (log?.status === 'success') {
-        streak++;
-      } else if (i === 0) {
-        continue;
-      } else {
-        break;
-      }
+      if (completions >= weeklyGoal) streak++;
+      else break;
     }
   }
-
-  // Adjust for bad habits: if failed today, streak is strictly 0.
-  if (isBad && streak > 0) {
-    const todayLog = habit.habit_logs.find((l) => getLocalDateStr(new Date(l.logged_at)) === getLocalDateStr(today));
-    if (todayLog?.status === 'failed') {
-      return 0;
-    }
-  }
-
   return streak;
 }
 
+// ─── Weekly Summary ───────────────────────────────────────────────────────────
+function WeeklySummaryCard({ habits }: { habits: Habit[] }) {
+  const weekDays = getCurrentWeekDays();
+  const monday = weekDays[0];
+  const sunday = weekDays[6];
+
+  const fmtShort = (d: Date) => d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+  const todayStr = getLocalDateStr(new Date());
+
+  const goodHabits = habits.filter((h) => (h.habit_type ?? 'good') === 'good');
+  const totalThisWeek = goodHabits.reduce((acc, h) => acc + countWeekCompletions(h, monday), 0);
+  const totalGoal = goodHabits.reduce((acc, h) => acc + (h.frequency?.weekly_goal ?? 3), 0);
+  const weekPct = totalGoal > 0 ? Math.min(100, Math.round((totalThisWeek / totalGoal) * 100)) : 0;
+
+  const DAY_LABELS = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
+
+  return (
+    <div className="bg-gradient-to-br from-zinc-900/80 to-zinc-950/80 border border-zinc-800/60 rounded-2xl p-5 mb-1">
+      <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center gap-2">
+          <CalendarDays className="w-4 h-4 text-indigo-400" />
+          <span className="text-sm font-semibold text-white">This Week</span>
+          <span className="text-xs text-zinc-500">{fmtShort(monday)} – {fmtShort(sunday)}</span>
+        </div>
+        <div className="flex items-center gap-1.5">
+          <span className="text-xs font-bold text-white">{totalThisWeek}</span>
+          <span className="text-xs text-zinc-500">/ {totalGoal} completions</span>
+        </div>
+      </div>
+
+      {/* Week-level progress bar */}
+      <div className="h-2 bg-zinc-800 rounded-full overflow-hidden mb-4">
+        <div
+          className="h-full rounded-full bg-gradient-to-r from-indigo-500 to-violet-500 transition-all duration-700"
+          style={{ width: `${weekPct}%` }}
+        />
+      </div>
+
+      {/* Per-habit progress this week */}
+      {goodHabits.length > 0 && (
+        <div className="space-y-2.5">
+          {goodHabits.map((h) => {
+            const goal = h.frequency?.weekly_goal ?? 3;
+            const done = countWeekCompletions(h, monday);
+            const pct = Math.min(100, Math.round((done / goal) * 100));
+            const colors = safeColor(h.color);
+
+            return (
+              <div key={h.id}>
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-xs text-zinc-400 truncate max-w-[160px]">{h.name}</span>
+                  <div className="flex items-center gap-2">
+                    {/* 7-day mini dots */}
+                    <div className="flex gap-0.5">
+                      {weekDays.map((day, i) => {
+                        const ds = getLocalDateStr(day);
+                        const isToday = ds === todayStr;
+                        const isFuture = day > new Date();
+                        const log = h.habit_logs.find((l) => getLocalDateStr(new Date(l.logged_at)) === ds);
+                        let dotClass = 'bg-zinc-800';
+                        if (!isFuture) {
+                          if (log?.status === 'success') dotClass = colors.dot;
+                          else if (log?.status === 'failed') dotClass = 'bg-rose-600';
+                          else if (log?.status === 'skipped') dotClass = 'bg-zinc-600';
+                        }
+                        return (
+                          <div
+                            key={i}
+                            title={`${DAY_LABELS[i]} ${ds}`}
+                            className={`w-2.5 h-2.5 rounded-full ${dotClass} ${isToday ? 'ring-1 ring-white/30' : ''} transition-colors`}
+                          />
+                        );
+                      })}
+                    </div>
+                    <span className={`text-[10px] font-semibold ${done >= goal ? 'text-emerald-400' : 'text-zinc-500'}`}>
+                      {done}/{goal}
+                    </span>
+                  </div>
+                </div>
+                <div className="h-1 bg-zinc-800/80 rounded-full overflow-hidden">
+                  <div className={`h-full rounded-full ${colors.bar} transition-all duration-500`} style={{ width: `${pct}%` }} />
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Main component ───────────────────────────────────────────────────────────
 export default function HabitTracker() {
   const [habits, setHabits] = useState<Habit[]>([]);
   const [loading, setLoading] = useState(true);
@@ -93,11 +204,13 @@ export default function HabitTracker() {
   const [newName, setNewName] = useState('');
   const [newColor, setNewColor] = useState('indigo');
   const [newType, setNewType] = useState<'good' | 'bad'>('good');
+  const [newWeeklyGoal, setNewWeeklyGoal] = useState(3);
   const [logging, setLogging] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editName, setEditName] = useState('');
   const [editColor, setEditColor] = useState('indigo');
+  const [editWeeklyGoal, setEditWeeklyGoal] = useState(3);
   const [editSaving, setEditSaving] = useState(false);
 
   const fetchHabits = async () => {
@@ -159,6 +272,7 @@ export default function HabitTracker() {
     setEditingId(habit.id);
     setEditName(habit.name);
     setEditColor(habit.color ?? 'indigo');
+    setEditWeeklyGoal(habit.frequency?.weekly_goal ?? 3);
   };
 
   const handleEdit = async (habitId: string) => {
@@ -168,11 +282,14 @@ export default function HabitTracker() {
       const res = await fetch(`/api/habits/${habitId}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: editName.trim(), color: editColor }),
+        body: JSON.stringify({ name: editName.trim(), color: editColor, weekly_goal: editWeeklyGoal }),
       });
       if (res.ok) {
         setHabits((prev) =>
-          prev.map((h) => h.id === habitId ? { ...h, name: editName.trim(), color: editColor } : h)
+          prev.map((h) => h.id === habitId
+            ? { ...h, name: editName.trim(), color: editColor, frequency: { ...(h.frequency ?? { type: 'weekly' }), weekly_goal: editWeeklyGoal } }
+            : h
+          )
         );
         setEditingId(null);
       }
@@ -195,7 +312,7 @@ export default function HabitTracker() {
           name: newName.trim(),
           icon: newType === 'bad' ? '⚠️' : '✨',
           color: newType === 'bad' ? 'rose' : newColor,
-          frequency: { type: 'daily' },
+          frequency: { type: 'weekly', weekly_goal: newType === 'bad' ? 1 : newWeeklyGoal },
           habit_type: newType,
         }),
       });
@@ -203,6 +320,7 @@ export default function HabitTracker() {
         setNewName('');
         setNewColor('indigo');
         setNewType('good');
+        setNewWeeklyGoal(3);
         setShowAdd(false);
         fetchHabits();
       }
@@ -245,6 +363,9 @@ export default function HabitTracker() {
           {showAdd ? 'Cancel' : 'Add Habit'}
         </button>
       </div>
+
+      {/* Weekly Summary Card — shown when there are good habits */}
+      {goodHabits.length > 0 && <WeeklySummaryCard habits={habits} />}
 
       {/* Add Habit Form */}
       {showAdd && (
@@ -295,21 +416,43 @@ export default function HabitTracker() {
             )}
           </div>
 
-          {/* Color picker — only for good habits */}
+          {/* Weekly goal & colour — only for good habits */}
           {newType === 'good' && (
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-zinc-500">Color:</span>
-              <div className="flex gap-1.5">
-                {COLORS.map((c) => (
+            <div className="flex items-center gap-4">
+              {/* Weekly goal stepper */}
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-zinc-500">Goal:</span>
+                <div className="flex items-center gap-1.5 bg-zinc-900 border border-zinc-700 rounded-lg px-2 py-1">
                   <button
-                    key={c}
                     type="button"
-                    onClick={() => setNewColor(c)}
-                    className={`w-5 h-5 rounded-full ${COLOR_MAP[c].dot} transition-all ${
-                      newColor === c ? 'ring-2 ring-white/30 ring-offset-1 ring-offset-zinc-950 scale-125' : 'opacity-60 hover:opacity-100'
-                    }`}
-                  />
-                ))}
+                    onClick={() => setNewWeeklyGoal((v) => Math.max(1, v - 1))}
+                    className="w-5 h-5 flex items-center justify-center text-zinc-400 hover:text-white transition-colors"
+                  >−</button>
+                  <span className="text-sm font-bold text-white w-4 text-center">{newWeeklyGoal}</span>
+                  <button
+                    type="button"
+                    onClick={() => setNewWeeklyGoal((v) => Math.min(7, v + 1))}
+                    className="w-5 h-5 flex items-center justify-center text-zinc-400 hover:text-white transition-colors"
+                  >+</button>
+                </div>
+                <span className="text-xs text-zinc-600">× / week</span>
+              </div>
+
+              {/* Color picker */}
+              <div className="flex items-center gap-2 flex-1 justify-end">
+                <span className="text-xs text-zinc-500">Color:</span>
+                <div className="flex gap-1.5">
+                  {COLORS.map((c) => (
+                    <button
+                      key={c}
+                      type="button"
+                      onClick={() => setNewColor(c)}
+                      className={`w-5 h-5 rounded-full ${COLOR_MAP[c].dot} transition-all ${
+                        newColor === c ? 'ring-2 ring-white/30 ring-offset-1 ring-offset-zinc-950 scale-125' : 'opacity-60 hover:opacity-100'
+                      }`}
+                    />
+                  ))}
+                </div>
               </div>
             </div>
           )}
@@ -330,7 +473,7 @@ export default function HabitTracker() {
         <div className="text-center py-10 bg-zinc-950/40 border border-zinc-800/60 border-dashed rounded-xl">
           <Flame className="w-8 h-8 text-zinc-700 mx-auto mb-3" />
           <p className="text-sm font-medium text-zinc-500 mb-1">No habits tracked yet</p>
-          <p className="text-xs text-zinc-700 mb-4">Add a habit to build identity-based consistency.</p>
+          <p className="text-xs text-zinc-700 mb-4">Add a habit to build identity-based weekly consistency.</p>
           <button
             onClick={() => setShowAdd(true)}
             className="px-4 py-2 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-zinc-300 text-sm rounded-lg transition-colors"
@@ -362,9 +505,11 @@ export default function HabitTracker() {
                 editingId={editingId}
                 editName={editName}
                 editColor={editColor}
+                editWeeklyGoal={editWeeklyGoal}
                 editSaving={editSaving}
                 onEditNameChange={setEditName}
                 onEditColorChange={setEditColor}
+                onEditWeeklyGoalChange={setEditWeeklyGoal}
                 onEditCancel={() => setEditingId(null)}
                 logging={logging}
               />
@@ -395,9 +540,11 @@ export default function HabitTracker() {
                 editingId={editingId}
                 editName={editName}
                 editColor={editColor}
+                editWeeklyGoal={editWeeklyGoal}
                 editSaving={editSaving}
                 onEditNameChange={setEditName}
                 onEditColorChange={setEditColor}
+                onEditWeeklyGoalChange={setEditWeeklyGoal}
                 onEditCancel={() => setEditingId(null)}
                 logging={logging}
                 isBad
@@ -412,9 +559,12 @@ export default function HabitTracker() {
 
 /* ─── HabitCard ─────────────────────────────────────────────────────────── */
 
+const DAY_LABELS = ['M', 'T', 'W', 'T', 'F', 'S', 'S'];
+
 function HabitCard({
   habit, onLog, onSkip, onDelete, onEdit, onEditSave, editingId,
-  editName, editColor, editSaving, onEditNameChange, onEditColorChange, onEditCancel,
+  editName, editColor, editWeeklyGoal, editSaving,
+  onEditNameChange, onEditColorChange, onEditWeeklyGoalChange, onEditCancel,
   logging, isBad = false,
 }: {
   habit: Habit;
@@ -426,19 +576,29 @@ function HabitCard({
   editingId: string | null;
   editName: string;
   editColor: string;
+  editWeeklyGoal: number;
   editSaving: boolean;
   onEditNameChange: (v: string) => void;
   onEditColorChange: (v: string) => void;
+  onEditWeeklyGoalChange: (v: number) => void;
   onEditCancel: () => void;
   logging: string | null;
   isBad?: boolean;
 }) {
   const isEditing = editingId === habit.id;
   const colors = safeColor(habit.color);
+  const weeklyGoal = habit.frequency?.weekly_goal ?? 3;
   const today = new Date();
   const todayStr = getLocalDateStr(today);
   const todayLog = habit.habit_logs.find((l) => getLocalDateStr(new Date(l.logged_at)) === todayStr);
-  const streak = calcStreak(habit);
+
+  // Weekly data
+  const weekMonday = getWeekStart(today);
+  const weekDays = getCurrentWeekDays();
+  const weekCompletions = countWeekCompletions(habit, weekMonday);
+  const weekPct = Math.min(100, Math.round((weekCompletions / weeklyGoal) * 100));
+  const weeklyStreak = calcWeeklyStreak(habit, weeklyGoal);
+  const isWeekGoalMet = weekCompletions >= weeklyGoal;
 
   const isLogging = (s: string) => logging === habit.id + s;
 
@@ -450,16 +610,17 @@ function HabitCard({
           <div className={`w-2 h-2 rounded-full flex-shrink-0 mt-1.5 ${isBad ? 'bg-rose-500' : colors.dot}`} />
           <div className="min-w-0">
             <p className="text-sm font-semibold text-white leading-snug truncate">{habit.name}</p>
-            {streak > 0 && !isBad && (
+            {/* Weekly streak badge */}
+            {weeklyStreak > 0 && !isBad && (
               <div className="flex items-center gap-1 mt-0.5">
                 <TrendingUp className="w-3 h-3 text-orange-400 flex-shrink-0" />
-                <span className="text-[10px] text-orange-400 font-semibold">{streak}d streak</span>
+                <span className="text-[10px] text-orange-400 font-semibold">🔥 {weeklyStreak}-week streak</span>
               </div>
             )}
-            {isBad && streak > 0 && (
+            {isBad && weeklyStreak > 0 && (
               <div className="flex items-center gap-1 mt-0.5">
                 <ShieldCheck className="w-3 h-3 text-emerald-400 flex-shrink-0" />
-                <span className="text-[10px] text-emerald-400 font-semibold">{streak}d clean</span>
+                <span className="text-[10px] text-emerald-400 font-semibold">{weeklyStreak}-week clean</span>
               </div>
             )}
           </div>
@@ -490,18 +651,37 @@ function HabitCard({
             className="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-1.5 text-sm text-white focus:outline-none focus:border-indigo-500"
           />
           {!isBad && (
-            <div className="flex items-center gap-1.5">
-              {Object.keys(COLOR_MAP).map((c) => (
-                <button
-                  key={c}
-                  type="button"
-                  onClick={() => onEditColorChange(c)}
-                  className={`w-4 h-4 rounded-full ${COLOR_MAP[c].dot} transition-all ${
-                    editColor === c ? 'ring-2 ring-white/40 ring-offset-1 ring-offset-zinc-950 scale-125' : 'opacity-60 hover:opacity-100'
-                  }`}
-                />
-              ))}
-            </div>
+            <>
+              <div className="flex items-center gap-1.5">
+                {Object.keys(COLOR_MAP).map((c) => (
+                  <button
+                    key={c}
+                    type="button"
+                    onClick={() => onEditColorChange(c)}
+                    className={`w-4 h-4 rounded-full ${COLOR_MAP[c].dot} transition-all ${
+                      editColor === c ? 'ring-2 ring-white/40 ring-offset-1 ring-offset-zinc-950 scale-125' : 'opacity-60 hover:opacity-100'
+                    }`}
+                  />
+                ))}
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-xs text-zinc-500">Weekly goal:</span>
+                <div className="flex items-center gap-1.5 bg-zinc-900 border border-zinc-700 rounded-lg px-2 py-0.5">
+                  <button
+                    type="button"
+                    onClick={() => onEditWeeklyGoalChange(Math.max(1, editWeeklyGoal - 1))}
+                    className="w-4 h-4 flex items-center justify-center text-zinc-400 hover:text-white"
+                  >−</button>
+                  <span className="text-sm font-bold text-white w-4 text-center">{editWeeklyGoal}</span>
+                  <button
+                    type="button"
+                    onClick={() => onEditWeeklyGoalChange(Math.min(7, editWeeklyGoal + 1))}
+                    className="w-4 h-4 flex items-center justify-center text-zinc-400 hover:text-white"
+                  >+</button>
+                </div>
+                <span className="text-xs text-zinc-600">× / week</span>
+              </div>
+            </>
           )}
           <div className="flex gap-2">
             <button
@@ -514,6 +694,50 @@ function HabitCard({
             <button onClick={onEditCancel} className="px-3 py-1 bg-zinc-800 hover:bg-zinc-700 text-zinc-400 text-xs rounded-lg">
               <X className="w-3 h-3" />
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* 7-day week view (Mon → Sun) */}
+      {!isBad && (
+        <div className="mb-3">
+          <div className="flex justify-between mb-1">
+            {weekDays.map((day, i) => {
+              const ds = getLocalDateStr(day);
+              const isToday = ds === todayStr;
+              const isFuture = day > new Date();
+              const log = habit.habit_logs.find((l) => getLocalDateStr(new Date(l.logged_at)) === ds);
+              let dotBg = 'bg-zinc-800';
+              if (!isFuture) {
+                if (log?.status === 'success') dotBg = colors.dot;
+                else if (log?.status === 'failed') dotBg = 'bg-rose-500/70';
+                else if (log?.status === 'skipped') dotBg = 'bg-zinc-600';
+              }
+
+              return (
+                <div key={i} className="flex flex-col items-center gap-0.5" title={ds}>
+                  <span className={`text-[9px] font-medium ${isToday ? 'text-white' : 'text-zinc-600'}`}>
+                    {DAY_LABELS[i]}
+                  </span>
+                  <div className={`w-4 h-4 rounded-full ${dotBg} ${isToday ? 'ring-2 ring-white/20' : ''} transition-colors`} />
+                </div>
+              );
+            })}
+          </div>
+          {/* Weekly progress bar */}
+          <div className="h-1 bg-zinc-800 rounded-full overflow-hidden">
+            <div
+              className={`h-full rounded-full transition-all duration-500 ${isWeekGoalMet ? 'bg-emerald-500' : colors.bar}`}
+              style={{ width: `${weekPct}%` }}
+            />
+          </div>
+          <div className="flex justify-between mt-1">
+            <span className={`text-[10px] font-semibold ${isWeekGoalMet ? 'text-emerald-400' : 'text-zinc-500'}`}>
+              {weekCompletions}/{weeklyGoal} this week
+            </span>
+            {isWeekGoalMet && (
+              <span className="text-[10px] text-emerald-400 font-bold">✓ Goal met!</span>
+            )}
           </div>
         </div>
       )}
@@ -536,7 +760,6 @@ function HabitCard({
             : '→ Skipped today'}
         </div>
       ) : isBad ? (
-        /* Bad habit: just one "Gave in" button — silence = resisted */
         <div className="space-y-1.5">
           <button
             onClick={() => onLog(habit.id, 'failed')}
@@ -548,7 +771,6 @@ function HabitCard({
           <p className="text-center text-[10px] text-zinc-700">No action = stayed clean ✓</p>
         </div>
       ) : (
-        /* Good habit: Done / Failed / Skip */
         <div className="flex gap-1.5">
           {[
             { s: 'success' as const, label: '✓', title: 'Done',   cls: 'hover:bg-emerald-600/20 hover:text-emerald-400 hover:border-emerald-700/50' },
@@ -574,42 +796,6 @@ function HabitCard({
           </button>
         </div>
       )}
-
-      {/* 14-day sparkline */}
-      <div className="mt-3 flex gap-0.5">
-        {[...Array(14)].map((_, i) => {
-          const d = new Date(today);
-          d.setDate(d.getDate() - (13 - i));
-          const ds = getLocalDateStr(d);
-          const log = habit.habit_logs.find((l) => getLocalDateStr(new Date(l.logged_at)) === ds);
-          
-          const createdDate = new Date(habit.created_at);
-          createdDate.setHours(0, 0, 0, 0);
-          d.setHours(0, 0, 0, 0);
-
-          let bg = 'bg-zinc-800/80';
-          if (d >= createdDate) {
-            if (isBad) {
-               // Bad habit sparkline
-               if (!log || log.status === 'success') bg = 'bg-emerald-600';
-               else bg = 'bg-rose-600'; // failed
-            } else {
-               // Good habit sparkline
-               if (log?.status === 'success') bg = colors.bar;
-               else if (log?.status === 'failed') bg = 'bg-rose-600';
-               else if (log?.status === 'skipped') bg = 'bg-zinc-600';
-            }
-          }
-
-          return (
-            <div
-              key={i}
-              className={`flex-1 h-1.5 rounded-sm ${bg} transition-opacity`}
-              title={ds}
-            />
-          );
-        })}
-      </div>
     </div>
   );
 }
