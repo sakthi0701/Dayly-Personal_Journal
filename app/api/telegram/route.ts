@@ -2,12 +2,12 @@ import { NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
 import { mem0 } from '@/lib/ai/memory';
 import { generateEmbedding } from '@/lib/embeddings';
-import { generateGoDeeperQuestion } from '@/lib/ai/groq';
-import { updateUserStatsOnEntry } from '@/lib/gamification';
-import { getUserStats, calculateLevel } from '@/lib/gamification';
+import { sendTelegramMessage } from '@/lib/telegram';
+import { generateGoDeeperQuestion, generateTelegramResponse } from '@/lib/ai/groq';
+import { updateUserStatsOnEntry, getUserStats, calculateLevel } from '@/lib/gamification';
 import { stripHtml } from '@/lib/utils/text';
 import { toRelativeDate } from '@/lib/utils/date';
-import { sendTelegramMessage } from '@/lib/telegram';
+
 
 export const dynamic = 'force-dynamic';
 
@@ -179,7 +179,7 @@ async function handleHabits(): Promise<string> {
     .gte('logged_at', start)
     .lt('logged_at', end);
 
-  const loggedToday = new Set((todayLogs ?? []).filter(l => l.status === 'done').map(l => l.habit_id));
+  const loggedToday = new Set((todayLogs ?? []).filter(l => l.status === 'success').map(l => l.habit_id));
 
   const lines = habits.map((h) => {
     const done = loggedToday.has(h.id);
@@ -225,7 +225,7 @@ async function handleLogHabit(query: string): Promise<string> {
 
   const { error } = await supabase
     .from('habit_logs')
-    .insert({ habit_id: habit.id, status: 'done', logged_at: new Date().toISOString() });
+    .insert({ habit_id: habit.id, status: 'success', logged_at: new Date().toISOString() });
 
   if (error) throw new Error(error.message);
 
@@ -439,13 +439,16 @@ export async function POST(request: Request) {
 
       } else if (rawText.startsWith('/habits')) {
         replyText = await handleHabits();
+        replyText = await generateTelegramResponse(replyText, rawText, 'habits');
 
-      } else if (rawText.startsWith('/loghabit ') || rawText.startsWith('/loghabit@')) {
+      } else if (rawText.startsWith('/loghabit')) {
         const query = rawText.replace(/^\/loghabit(@\S+)?\s*/, '');
         replyText = await handleLogHabit(query);
+        replyText = await generateTelegramResponse(replyText, rawText, 'loghabit');
 
       } else if (rawText.startsWith('/tasks')) {
         replyText = await handleTasks();
+        replyText = await generateTelegramResponse(replyText, rawText, 'tasks');
 
       } else if (rawText.startsWith('/addtask ') || rawText.startsWith('/addtask@')) {
         const title = rawText.replace(/^\/addtask(@\S+)?\s*/, '');
@@ -453,6 +456,7 @@ export async function POST(request: Request) {
 
       } else if (rawText.startsWith('/pressure')) {
         replyText = await handlePressure();
+        replyText = await generateTelegramResponse(replyText, rawText, 'pressure');
 
       } else if (rawText.startsWith('/addpressure ') || rawText.startsWith('/addpressure@')) {
         const title = rawText.replace(/^\/addpressure(@\S+)?\s*/, '');
@@ -460,6 +464,7 @@ export async function POST(request: Request) {
 
       } else if (rawText.startsWith('/stats')) {
         replyText = await handleStats();
+        replyText = await generateTelegramResponse(replyText, rawText, 'stats');
 
       } else if (rawText.startsWith('/')) {
         replyText = `❓ Unknown command. Use /help to see all commands.`;

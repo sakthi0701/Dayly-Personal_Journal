@@ -305,7 +305,7 @@ Based on this draft and my past entries, Think of three possible questions and c
       ],
       model: 'openai/gpt-oss-120b',
       temperature: 0.6,
-    }); console.log(systemPrompt); console.log(userMessage);
+    });
 
     return (
       completion.choices[0]?.message?.content?.trim() ||
@@ -314,5 +314,66 @@ Based on this draft and my past entries, Think of three possible questions and c
   } catch (error) {
     console.error('Groq API Error in generateGoDeeperQuestion:', error);
     return 'What is one small thing you can focus on today?';
+  }
+}
+
+// ─── Telegram Bot Smart Response ─────────────────────────────────────────────
+//
+// Wraps any raw command output with a Sensei-flavoured observation.
+// Uses llama-3.3-70b (fast, cheap) for sub-second latency on mobile.
+//
+// context: the raw data string already assembled (task list, habit list, etc.)
+// userInput: what the user sent (so the LLM can respond to intent, not just data)
+// mode: hints the persona ('journal' | 'habits' | 'tasks' | 'pressure' | 'stats' | 'loghabit' | 'cron')
+
+export async function generateTelegramResponse(
+  context: string,
+  userInput: string,
+  mode: 'journal' | 'habits' | 'tasks' | 'pressure' | 'stats' | 'loghabit' | 'cron'
+): Promise<string> {
+  const modeInstructions: Record<string, string> = {
+    journal: `The user just journaled. You've read the entry and the Sensei question has already been generated. Your job is just to frame the saved confirmation with one brief, punchy observation from their entry — one sentence that shows you actually read it. Then output the question. Do NOT add anything after the question.`,
+    habits:  `The user asked to see their habits. Show the data cleanly. If 0 habits are done, add one cold sentence to acknowledge that. If all done, one warm sentence. Keep the data list intact — just prepend or append one sentence of commentary.`,
+    tasks:   `The user asked to see their tasks. Show the list intact. If there are high-priority tasks, note the most urgent one by name. Keep it to one sentence of commentary max.`,
+    pressure:`The user asked for their pressure tasks. Show the list. If anything is overdue, call it out by name in one sentence. One sentence only.`,
+    stats:   `The user asked for stats. Show the data. End with one sentence — either a reality check if the numbers are weak, or a short acknowledgment if they're strong. Specific to what the data actually shows.`,
+    loghabit:`The user just logged a habit. Confirm it happened. One sentence of motivation specific to that habit — not generic. Keep it short.`,
+    cron:    `This is an automated deadline reminder. Make it feel like a personal nudge from someone who knows the user, not a machine. Reference the task titles by name. Keep it short — 3 lines max.`,
+  };
+
+  const systemPrompt = `You are the Sensei — a direct, no-nonsense productivity coach built into the user's Dayly app Telegram bot. You have zero patience for excuses but genuine care for results.
+
+RULES:
+- Maximum 3 sentences total in your response.
+- Speak directly. No fluff, no filler, no "Great job!" unless earned.
+- The raw data (task list, habit list, etc.) is already formatted — include it verbatim in your output. Only ADD a brief observation. Do not rewrite or reformat the data.
+- Use Telegram Markdown: *bold*, _italic_. No headers.
+- Never use generic motivation. If you reference a habit or task, name it specifically.
+- If there's nothing meaningful to add, just return the context unchanged — do not force commentary.
+
+YOUR INSTRUCTION FOR THIS RESPONSE:
+${modeInstructions[mode] ?? modeInstructions.tasks}`;
+
+  const userMessage = `User sent: "${userInput}"
+
+Formatted data to include in your response:
+${context}`;
+
+  try {
+    const completion = await groq.chat.completions.create({
+      messages: [
+        { role: 'system', content: systemPrompt },
+        { role: 'user', content: userMessage },
+      ],
+      model: 'llama-3.3-70b-versatile',
+      temperature: 0.55,
+      max_tokens: 400,
+    });
+    return (
+      completion.choices[0]?.message?.content?.trim() || context
+    );
+  } catch (error) {
+    console.error('[Telegram LLM] Error:', error);
+    return context; // Graceful fallback: return the raw data unchanged
   }
 }
