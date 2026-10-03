@@ -2,6 +2,11 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  env: {
+    // This allows you to save these in Vercel WITHOUT the NEXT_PUBLIC_ prefix to bypass the security warning.
+    NEXT_PUBLIC_SUPABASE_URL: process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || '',
+    NEXT_PUBLIC_SUPABASE_ANON_KEY: process.env.SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '',
+  },
   /* config options here */
   // Removed webpack config to avoid conflict with Next.js 16 Turbopack default
   serverExternalPackages: [
