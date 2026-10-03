@@ -80,6 +80,7 @@ export async function POST(request: Request) {
       strictStatsRes,
       activeGoalsRes,
       habitLogsRes,
+      sessionReviewsRes,
     ] = await Promise.all([
       mem0.search(message, { userId: 'default_user', limit: 6 }).catch(() => null),
       getUserStats(),
@@ -109,6 +110,11 @@ export async function POST(request: Request) {
         .from('habit_logs')
         .select('habit_id, logged_at, status, habits(name)')
         .gte('logged_at', thirtyDaysAgo),
+
+      supabase
+        .from('session_reviews')
+        .select('triggered_distractions')
+        .gte('created_at', sevenDaysAgo),
     ]);
 
     // ── 5. Build execution summary ────────────────────────────────────────────
@@ -116,6 +122,7 @@ export async function POST(request: Request) {
     const strictBlocks = strictStatsRes.data ?? [];
     const activeGoals = activeGoalsRes.data ?? [];
     const habitLogs = habitLogsRes.data ?? [];
+    const sessionReviews = sessionReviewsRes?.data ?? [];
 
     // Suppress unused var lint — focusStatsRes fetched for future use
     void focusStatsRes;
@@ -150,9 +157,29 @@ export async function POST(request: Request) {
       ? decayedHabits.map((h) => `"${h.name}" failed ${h.failCount} of last 7 days`).join('; ')
       : 'No habit decay detected.';
 
+    // Distraction triggers
+    const distractionCounts = new Map<string, number>();
+    sessionReviews.forEach((r: { triggered_distractions?: unknown }) => {
+      const list = Array.isArray(r.triggered_distractions) ? r.triggered_distractions : [];
+      list.forEach((d: { label?: string }) => {
+        if (d?.label) {
+          distractionCounts.set(d.label, (distractionCounts.get(d.label) ?? 0) + 1);
+        }
+      });
+    });
+    const topDistractions = [...distractionCounts.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 4)
+      .map(([label, count]) => `${label} (${count}×)`)
+      .join(', ');
+    const distractionsSummary = topDistractions
+      ? `Frequent distraction triggers (last 7 days): ${topDistractions}`
+      : 'No distraction triggers recorded.';
+
     const executionData: ExecutionSummary = {
       totalPlanned, totalCompleted, strictFailed,
       alignmentPercentage, goalDeadlinesSummary, failedHabitsSummary,
+      distractionsSummary,
     };
 
     // ── 6. Build augmented question with thread context ───────────────────────

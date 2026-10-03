@@ -14,7 +14,9 @@ class TasksWidget : AppWidgetProvider() {
 
     companion object {
         private const val PREFS_FILE = "CapacitorStorage"
-        private const val ACTION_UPDATE = "com.dayly.WIDGET_UPDATE"
+        const val ACTION_UPDATE = "com.dayly.WIDGET_UPDATE"
+        const val ACTION_COMPLETE_TASK = "com.dayly.ACTION_COMPLETE_TASK"
+        const val ACTION_REFRESH_MANUAL = "com.dayly.ACTION_REFRESH_MANUAL"
     }
 
     override fun onUpdate(
@@ -29,15 +31,23 @@ class TasksWidget : AppWidgetProvider() {
 
     override fun onReceive(context: Context, intent: Intent) {
         super.onReceive(context, intent)
-        if (intent.action == ACTION_UPDATE || intent.action == AppWidgetManager.ACTION_APPWIDGET_UPDATE) {
+        val action = intent.action ?: return
+
+        if (action == ACTION_COMPLETE_TASK) {
+            val taskId = intent.getStringExtra("task_id") ?: ""
+            val taskTitle = intent.getStringExtra("task_title") ?: "Task"
+            val isPressure = intent.getBooleanExtra("is_pressure", false)
+            if (taskId.isNotEmpty()) {
+                WidgetSyncHelper.completeTask(context, taskId, taskTitle, isPressure)
+            }
+        } else if (action == ACTION_REFRESH_MANUAL) {
+            WidgetSyncHelper.refreshDataFromServer(context)
+        } else if (action == ACTION_UPDATE || action == AppWidgetManager.ACTION_APPWIDGET_UPDATE) {
             val manager = AppWidgetManager.getInstance(context)
             val ids = manager.getAppWidgetIds(
                 ComponentName(context, TasksWidget::class.java)
             )
-            // Notify the list view that the data has changed
             manager.notifyAppWidgetViewDataChanged(ids, R.id.widget_tasks_list)
-            
-            // Re-render everything to update the timer header if needed
             for (id in ids) {
                 updateWidget(context, manager, id)
             }
@@ -58,7 +68,6 @@ class TasksWidget : AppWidgetProvider() {
         val views = RemoteViews(context.packageName, R.layout.widget_tasks)
 
         // ── Active Timer Header ──────────────────────────────────────────
-        // Note: Using widget_tasks_container ID from XML for the timer section
         if (timerStatus == "running" || timerStatus == "paused") {
             val statusIcon = if (timerStatus == "paused") "⏸️" else "⏳"
             views.setViewVisibility(R.id.widget_tasks_container, View.VISIBLE)
@@ -75,22 +84,29 @@ class TasksWidget : AppWidgetProvider() {
         views.setRemoteAdapter(R.id.widget_tasks_list, serviceIntent)
         views.setEmptyView(R.id.widget_tasks_list, R.id.widget_empty_view)
 
-        // ── Action: Open App ──────────────────────────────────────────────────
+        // ── Action: Task Item Completion Template ─────────────────────────
+        val itemClickIntent = Intent(context, TasksWidget::class.java).apply {
+            action = ACTION_COMPLETE_TASK
+        }
+        val pendingItemClick = PendingIntent.getBroadcast(
+            context, widgetId, itemClickIntent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_MUTABLE
+        )
+        views.setPendingIntentTemplate(R.id.widget_tasks_list, pendingItemClick)
+
+        // ── Action: Open App on Title Click ───────────────────────────────
         val launchIntent = context.packageManager.getLaunchIntentForPackage(context.packageName)
         if (launchIntent != null) {
             val pendingLaunch = PendingIntent.getActivity(
-                context, widgetId, launchIntent,
+                context, widgetId + 100000, launchIntent,
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
             )
-            // Template for list items
-            views.setPendingIntentTemplate(R.id.widget_tasks_list, pendingLaunch)
-            // Root click
-            views.setOnClickPendingIntent(R.id.widget_root, pendingLaunch)
+            views.setOnClickPendingIntent(R.id.widget_tasks_title, pendingLaunch)
         }
 
-        // ── Action: Refresh ───────────────────────────────────────────────────
-        val refreshIntent = Intent(ACTION_UPDATE).apply {
-            component = ComponentName(context, TasksWidget::class.java)
+        // ── Action: Refresh ───────────────────────────────────────────────
+        val refreshIntent = Intent(context, TasksWidget::class.java).apply {
+            action = ACTION_REFRESH_MANUAL
         }
         val pendingRefresh = PendingIntent.getBroadcast(
             context, widgetId + 200000, refreshIntent,

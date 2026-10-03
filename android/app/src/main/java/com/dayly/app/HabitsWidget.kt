@@ -15,6 +15,7 @@ class HabitsWidget : AppWidgetProvider() {
     companion object {
         private const val PREFS_FILE = "CapacitorStorage"
         private const val KEY_HABITS = "widget_habits"
+        private const val ACTION_REFRESH_MANUAL = "com.dayly.ACTION_REFRESH_MANUAL"
     }
 
     override fun onUpdate(
@@ -29,7 +30,10 @@ class HabitsWidget : AppWidgetProvider() {
 
     override fun onReceive(context: Context, intent: Intent) {
         super.onReceive(context, intent)
-        if (intent.action == "com.dayly.WIDGET_UPDATE") {
+        val action = intent.action ?: return
+        if (action == ACTION_REFRESH_MANUAL) {
+            WidgetSyncHelper.refreshDataFromServer(context)
+        } else if (action == "com.dayly.WIDGET_UPDATE" || action == AppWidgetManager.ACTION_APPWIDGET_UPDATE) {
             val manager = AppWidgetManager.getInstance(context)
             val ids = manager.getAppWidgetIds(
                 ComponentName(context, HabitsWidget::class.java)
@@ -84,8 +88,8 @@ class HabitsWidget : AppWidgetProvider() {
         }
 
         // ── Action: Refresh ───────────────────────────────────────────────────
-        val refreshIntent = Intent("com.dayly.WIDGET_UPDATE").apply {
-            component = ComponentName(context, HabitsWidget::class.java)
+        val refreshIntent = Intent(context, HabitsWidget::class.java).apply {
+            action = ACTION_REFRESH_MANUAL
         }
         val pendingRefresh = PendingIntent.getBroadcast(
             context, widgetId + 400000, refreshIntent,

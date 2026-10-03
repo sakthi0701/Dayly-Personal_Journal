@@ -109,12 +109,25 @@ function ActionPageInner() {
   const handleUpdate = async (id: string, updates: Partial<Task>) => {
     setTasks((prev) => prev.map((t) => (t.id === id ? { ...t, ...updates } : t)));
     try {
+      const today = new Date().toLocaleDateString('en-CA');
       const res = await fetch(`/api/tasks/${id}`, {
         method: 'PATCH',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(updates),
+        body: JSON.stringify({ ...updates, today }),
       });
       if (!res.ok) throw new Error('Update failed');
+      const data = await res.json();
+      if (data.spawnedTask) {
+        setTasks((prev) => {
+          const exists = prev.some((t) => t.id === data.spawnedTask.id);
+          if (exists) {
+            return prev.map((t) => (t.id === data.spawnedTask.id ? { ...t, ...data.spawnedTask } : t));
+          }
+          return [data.spawnedTask, ...prev];
+        });
+      } else if (updates.status === 'done') {
+        loadTasks();
+      }
     } catch {
       loadTasks();
       showToast('Failed to update task', 'error');

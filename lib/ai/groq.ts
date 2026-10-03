@@ -11,6 +11,7 @@ export interface ExecutionSummary {
   alignmentPercentage: number;
   goalDeadlinesSummary: string;
   failedHabitsSummary: string;
+  distractionsSummary?: string;
 }
 
 // ─── Audio Transcription ──────────────────────────────────────────────────────
@@ -75,6 +76,7 @@ BACKGROUND CONTEXT:
 - Strict Mode Failures: ${executionData?.strictFailed ?? 0}
 - Impending Deadlines: ${executionData?.goalDeadlinesSummary ?? 'No active goals.'}
 - Habit Decay: ${executionData?.failedHabitsSummary ?? 'No habit decay detected.'}
+- Distraction Triggers: ${executionData?.distractionsSummary ?? 'No distraction triggers recorded.'}
 
 YOUR RULES:
 1. Give the shortest complete answer possible.

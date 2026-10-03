@@ -6,6 +6,32 @@ interface RouteContext {
   params: Promise<{ id: string }>;
 }
 
+function parseDateUTC(dateStr: string): Date {
+  const [y, m, d] = dateStr.slice(0, 10).split('-').map(Number);
+  return new Date(Date.UTC(y, m - 1, d, 12, 0, 0));
+}
+
+function formatDateUTC(d: Date): string {
+  return d.toISOString().slice(0, 10);
+}
+
+function addDaysUTC(d: Date, days: number): Date {
+  const res = new Date(d);
+  res.setUTCDate(res.getUTCDate() + days);
+  return res;
+}
+
+function getTodayDateStr(clientDate?: string | null): string {
+  if (clientDate && /^\d{4}-\d{2}-\d{2}$/.test(clientDate)) {
+    return clientDate;
+  }
+  try {
+    return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata', year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
+  } catch {
+    return new Date().toISOString().slice(0, 10);
+  }
+}
+
 export async function PATCH(request: Request, context: RouteContext) {
   try {
     const { id } = await context.params;
@@ -52,6 +78,8 @@ export async function PATCH(request: Request, context: RouteContext) {
       }
     }
 
+    let spawnedTask = null;
+
     // Handle completion (only on status transition to 'done')
     if (updates.status === 'done' && existingTask?.status !== 'done') {
       await addXP(20);
@@ -68,73 +96,154 @@ export async function PATCH(request: Request, context: RouteContext) {
         }
       }
 
-      // ── Recurring Task: Spawn next occurrence ────────────────────────────
+      // ── Recurring Task: Advance / Spawn next occurrence ──────────────────
       const isRecurring = updates.is_recurring !== undefined ? updates.is_recurring : existingTask?.is_recurring;
-      if (isRecurring) {
+      if (isRecurring && existingTask?.title) {
+        // Mark the completed task's is_recurring to false so historical completed records
+        // do not re-spawn tasks if toggled later. (recurrence_rule is preserved for badge display)
+        await supabase.from('tasks').update({ is_recurring: false }).eq('id', id);
+
         const rule = existingTask?.recurrence_rule ?? 'days:1';
-        const currentDueDate = existingTask?.due_date ? new Date(existingTask.due_date) : new Date();
-        const nextDueDate = new Date(currentDueDate);
+        const todayStr = getTodayDateStr(body.today);
+        const currentDueDateStr = existingTask?.due_date ? existingTask.due_date.slice(0, 10) : todayStr;
+
+        let nextDueDateStr = todayStr;
 
         if (rule.startsWith('days:')) {
-          const days = rule.replace('days:', '').split(',').map((n) => parseInt(n, 10)).filter((n) => !isNaN(n));
+          const days = rule
+            .replace('days:', '')
+            .split(',')
+            .map((n: string) => parseInt(n, 10))
+            .filter((n: number) => !isNaN(n) && n >= 0 && n <= 6);
+
           if (days.length > 0) {
-            const currentDay = currentDueDate.getDay();
-            let minOffset = 7;
-            for (let offset = 1; offset <= 7; offset++) {
-              if (days.includes((currentDay + offset) % 7)) {
-                minOffset = offset;
-                break;
+            if (currentDueDateStr < todayStr) {
+              // Task was overdue. Completion is happening today.
+              // The next occurrence CANNOT be in the past.
+              const todayDate = parseDateUTC(todayStr);
+              const todayDayOfWeek = todayDate.getUTCDay();
+
+              if (days.includes(todayDayOfWeek)) {
+                nextDueDateStr = todayStr;
+              } else {
+                let minOffset = 7;
+                for (let offset = 1; offset <= 7; offset++) {
+                  if (days.includes((todayDayOfWeek + offset) % 7)) {
+                    minOffset = offset;
+                    break;
+                  }
+                }
+                nextDueDateStr = formatDateUTC(addDaysUTC(todayDate, minOffset));
               }
+            } else {
+              // Task was due today or in the future.
+              // That occurrence is completed; next occurrence MUST be strictly after currentDueDateStr.
+              const baseDate = parseDateUTC(currentDueDateStr);
+              const baseDayOfWeek = baseDate.getUTCDay();
+              let minOffset = 7;
+              for (let offset = 1; offset <= 7; offset++) {
+                if (days.includes((baseDayOfWeek + offset) % 7)) {
+                  minOffset = offset;
+                  break;
+                }
+              }
+              nextDueDateStr = formatDateUTC(addDaysUTC(baseDate, minOffset));
             }
-            nextDueDate.setDate(nextDueDate.getDate() + minOffset);
           } else {
-            nextDueDate.setDate(nextDueDate.getDate() + 7);
+            const baseStr = currentDueDateStr >= todayStr ? currentDueDateStr : todayStr;
+            nextDueDateStr = formatDateUTC(addDaysUTC(parseDateUTC(baseStr), 7));
           }
         } else {
           // Legacy fallback for Nx-weekly or weekly
           const match = rule.match(/^(\d+)x-weekly$/);
           const timesPerWeek = match ? parseInt(match[1], 10) : 1;
           const intervalDays = Math.round(7 / Math.max(1, timesPerWeek));
-          nextDueDate.setDate(nextDueDate.getDate() + intervalDays);
+          const baseStr = currentDueDateStr >= todayStr ? currentDueDateStr : todayStr;
+          nextDueDateStr = formatDateUTC(addDaysUTC(parseDateUTC(baseStr), intervalDays));
         }
 
         const recEndDate = existingTask?.recurrence_end_date;
-        const shouldSpawn = !recEndDate || nextDueDate <= new Date(recEndDate);
+        const shouldSpawn = !recEndDate || nextDueDateStr <= recEndDate.slice(0, 10);
 
         if (shouldSpawn) {
-          const nextDueDateStr = nextDueDate.toISOString().slice(0, 10);
-
-          // Get max position in current task list
-          const { data: lastTask } = await supabase
+          // ── DEDUPLICATION CHECK: Check if an active task for this series already exists ──
+          const { data: existingActiveTasks } = await supabase
             .from('tasks')
-            .select('position')
-            .is('parent_task_id', null)
-            .order('position', { ascending: false })
-            .limit(1)
-            .single();
-          const nextPosition = (lastTask?.position ?? -1) + 1;
+            .select('id, due_date, status, position')
+            .eq('title', existingTask.title.trim())
+            .neq('id', id)
+            .in('status', ['todo', 'in-progress']);
 
-          await supabase.from('tasks').insert({
-            title: existingTask?.title,
-            notes: existingTask?.notes ?? null,
-            priority: existingTask?.priority ?? 'none',
-            estimated_pomodoros: existingTask?.estimated_pomodoros ?? 1,
-            due_date: nextDueDateStr,
-            is_recurring: true,
-            recurrence_rule: rule, // preserve exact rule (e.g. '2x-weekly')
-            recurrence_end_date: existingTask?.recurrence_end_date ?? null,
-            status: 'todo',
-            position: nextPosition,
-            goal_id: targetGoalId ?? null,
-          });
+          if (existingActiveTasks && existingActiveTasks.length > 0) {
+            // An active instance already exists! Do NOT insert a duplicate row.
+            // If the existing active task has an older due date, advance it to nextDueDateStr.
+            const primaryActive = existingActiveTasks[0];
+            if (primaryActive.due_date && primaryActive.due_date < nextDueDateStr) {
+              const { data: updatedActive } = await supabase
+                .from('tasks')
+                .update({ due_date: nextDueDateStr })
+                .eq('id', primaryActive.id)
+                .select()
+                .single();
+              spawnedTask = updatedActive;
+            } else {
+              spawnedTask = primaryActive;
+            }
+          } else {
+            // No active task exists. Insert the new occurrence.
+            const { data: lastTask } = await supabase
+              .from('tasks')
+              .select('position')
+              .is('parent_task_id', null)
+              .order('position', { ascending: false })
+              .limit(1)
+              .single();
+            const nextPosition = (lastTask?.position ?? -1) + 1;
 
-          // If goal is linked AND has a bounded end date, increment total_task_count for the new spawned task
-          if (targetGoalId && recEndDate) {
-            const { error: totalErr } = await supabase.rpc('increment_goal_total', { goal_id_input: targetGoalId });
-            if (totalErr) {
-              const { data: g } = await supabase.from('goals').select('total_task_count').eq('id', targetGoalId).single();
-              if (g) {
-                await supabase.from('goals').update({ total_task_count: (g.total_task_count ?? 0) + 1 }).eq('id', targetGoalId);
+            const { data: newTask, error: insertErr } = await supabase
+              .from('tasks')
+              .insert({
+                title: existingTask.title.trim(),
+                notes: existingTask.notes ?? null,
+                priority: existingTask.priority ?? 'none',
+                estimated_pomodoros: existingTask.estimated_pomodoros ?? 1,
+                due_date: nextDueDateStr,
+                is_recurring: true,
+                recurrence_rule: rule,
+                recurrence_end_date: existingTask.recurrence_end_date ?? null,
+                status: 'todo',
+                position: nextPosition,
+                goal_id: targetGoalId ?? null,
+              })
+              .select()
+              .single();
+
+            if (!insertErr && newTask) {
+              spawnedTask = newTask;
+
+              // Copy tags from existing task if any
+              const { data: existingTags } = await supabase
+                .from('task_tags')
+                .select('tag_id')
+                .eq('task_id', id);
+
+              if (existingTags && existingTags.length > 0) {
+                const newTagLinks = existingTags.map((t: { tag_id: string }) => ({
+                  task_id: newTask.id,
+                  tag_id: t.tag_id,
+                }));
+                await supabase.from('task_tags').insert(newTagLinks);
+              }
+
+              // Increment goal total_task_count if bounded
+              if (targetGoalId && recEndDate) {
+                const { error: totalErr } = await supabase.rpc('increment_goal_total', { goal_id_input: targetGoalId });
+                if (totalErr) {
+                  const { data: g } = await supabase.from('goals').select('total_task_count').eq('id', targetGoalId).single();
+                  if (g) {
+                    await supabase.from('goals').update({ total_task_count: (g.total_task_count ?? 0) + 1 }).eq('id', targetGoalId);
+                  }
+                }
               }
             }
           }
@@ -142,7 +251,7 @@ export async function PATCH(request: Request, context: RouteContext) {
       }
     }
 
-    return NextResponse.json({ task });
+    return NextResponse.json({ task, spawnedTask });
   } catch (err) {
     console.error('[PATCH /api/tasks/[id]]', err);
     return NextResponse.json({ error: 'Failed to update task' }, { status: 500 });

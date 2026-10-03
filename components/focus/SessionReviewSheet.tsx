@@ -29,7 +29,21 @@ export default function SessionReviewSheet({
   xpResult,
   isSubmitting,
 }: Props) {
-  const [triggered, setTriggered] = useState<Set<string>>(new Set());
+  const loggedDistractions = useTimer(state => state.loggedDistractions);
+
+  // Combine session not-to-dos with any distractions logged during the session (e.g. from PiP)
+  const allReviewItems: NotToDoItem[] = [...notToDoItems];
+  (loggedDistractions ?? []).forEach((d) => {
+    if (!allReviewItems.some((item) => item.label.toLowerCase() === d.label.toLowerCase())) {
+      allReviewItems.push({ label: d.label, emoji: d.emoji });
+    }
+  });
+
+  const [triggered, setTriggered] = useState<Set<string>>(() => {
+    const initial = new Set<string>();
+    (loggedDistractions ?? []).forEach((d) => initial.add(d.label));
+    return initial;
+  });
   const [note, setNote] = useState('');
   const [submitted, setSubmitted] = useState(false);
 
@@ -49,7 +63,7 @@ export default function SessionReviewSheet({
   };
 
   const handleSubmit = () => {
-    const triggeredDistractions = notToDoItems.filter((item) => triggered.has(item.label));
+    const triggeredDistractions = allReviewItems.filter((item) => triggered.has(item.label));
     setSubmitted(true);
     onSubmit({ triggeredDistractions, completionNote: note });
   };
@@ -225,13 +239,13 @@ export default function SessionReviewSheet({
 
         <div className="px-5 py-4 space-y-5 max-h-[60vh] overflow-y-auto">
           {/* Distraction review */}
-          {notToDoItems.length > 0 ? (
+          {allReviewItems.length > 0 ? (
             <div>
               <p className="text-sm font-medium text-zinc-200 mb-3">
                 Did any of these happen?
               </p>
               <div className="space-y-2">
-                {notToDoItems.map((item) => {
+                {allReviewItems.map((item) => {
                   const isTriggered = triggered.has(item.label);
                   return (
                     <button

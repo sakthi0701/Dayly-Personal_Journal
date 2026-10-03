@@ -22,7 +22,7 @@ class TasksRemoteViewsFactory(private val context: Context) : RemoteViewsService
         private const val KEY_TASKS = "widget_tasks"
     }
 
-    data class TaskItem(val title: String, val progress: Int, val isPressure: Boolean)
+    data class TaskItem(val id: String, val title: String, val progress: Int, val isPressure: Boolean)
 
     override fun onCreate() {}
 
@@ -37,6 +37,7 @@ class TasksRemoteViewsFactory(private val context: Context) : RemoteViewsService
                 for (i in 0 until jsonArray.length()) {
                     val taskObj = jsonArray.getJSONObject(i)
                     newList.add(TaskItem(
+                        taskObj.optString("id", ""),
                         taskObj.optString("title", "Unknown Task"),
                         taskObj.optInt("progress", 0),
                         taskObj.optBoolean("isPressure", false)
@@ -47,8 +48,8 @@ class TasksRemoteViewsFactory(private val context: Context) : RemoteViewsService
             }
         } else {
             // Mock data so the widget isn't empty on first install
-            newList.add(TaskItem("Welcome to Dayly", 0, false))
-            newList.add(TaskItem("Sync from app", 0, false))
+            newList.add(TaskItem("", "Welcome to Dayly", 0, false))
+            newList.add(TaskItem("", "Sync from app", 0, false))
         }
         tasks = newList
     }
@@ -63,7 +64,7 @@ class TasksRemoteViewsFactory(private val context: Context) : RemoteViewsService
         val task = tasks[position]
         val rv = RemoteViews(context.packageName, R.layout.widget_task_item)
         
-        val displayTitle = if (task.isPressure) "🔥 ${task.title}" else task.title
+        val displayTitle = if (task.isPressure && !task.title.startsWith("🔥")) "🔥 ${task.title}" else task.title
         rv.setTextViewText(R.id.task_title, displayTitle)
         
         if (task.isPressure) {
@@ -72,8 +73,12 @@ class TasksRemoteViewsFactory(private val context: Context) : RemoteViewsService
             rv.setProgressBar(R.id.task_progress, 100, task.progress, false)
         }
 
-        // Fill-in Intent for item click (handled by PendingIntentTemplate in Provider)
-        val fillInIntent = Intent()
+        // Fill-in Intent with task details for completion handling
+        val fillInIntent = Intent().apply {
+            putExtra("task_id", task.id)
+            putExtra("task_title", task.title)
+            putExtra("is_pressure", task.isPressure)
+        }
         rv.setOnClickFillInIntent(R.id.task_title, fillInIntent)
         rv.setOnClickFillInIntent(R.id.task_progress, fillInIntent)
 

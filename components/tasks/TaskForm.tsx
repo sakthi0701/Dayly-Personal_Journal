@@ -37,7 +37,7 @@ export default function TaskForm({ parentId, initialData, onCreated, onUpdated, 
   const [recurringDays,       setRecurringDays]       = useState<number[]>(() => {
     const rule = initialData?.recurrence_rule ?? '';
     if (rule.startsWith('days:')) {
-      const parsed = rule.replace('days:', '').split(',').map((n) => parseInt(n, 10)).filter((n) => !isNaN(n));
+      const parsed = rule.replace('days:', '').split(',').map((n: string) => parseInt(n, 10)).filter((n: number) => !isNaN(n));
       if (parsed.length > 0) return parsed;
     }
     // Default to current day of week (0-6) if new or unparsed
@@ -104,21 +104,30 @@ export default function TaskForm({ parentId, initialData, onCreated, onUpdated, 
 
     let finalDueDate = dueDate || null;
     if (isRecurring && recurringDays.length > 0) {
-      const now = new Date();
-      const todayDay = now.getDay();
-      if (recurringDays.includes(todayDay)) {
-        finalDueDate = now.toLocaleDateString('en-CA');
+      const todayStr = new Date().toLocaleDateString('en-CA');
+      const isInitialRecurring = initialData?.is_recurring;
+      const initialRule = initialData?.recurrence_rule ?? '';
+      const currentRule = `days:${[...recurringDays].sort((a, b) => a - b).join(',')}`;
+
+      if (isEdit && isInitialRecurring && initialRule === currentRule && initialData?.due_date && initialData.due_date.slice(0, 10) >= todayStr) {
+        finalDueDate = initialData.due_date.slice(0, 10);
       } else {
-        let minOffset = 7;
-        for (let offset = 1; offset <= 7; offset++) {
-          if (recurringDays.includes((todayDay + offset) % 7)) {
-            minOffset = offset;
-            break;
+        const now = new Date();
+        const todayDay = now.getDay();
+        if (recurringDays.includes(todayDay)) {
+          finalDueDate = now.toLocaleDateString('en-CA');
+        } else {
+          let minOffset = 7;
+          for (let offset = 1; offset <= 7; offset++) {
+            if (recurringDays.includes((todayDay + offset) % 7)) {
+              minOffset = offset;
+              break;
+            }
           }
+          const next = new Date(now);
+          next.setDate(next.getDate() + minOffset);
+          finalDueDate = next.toLocaleDateString('en-CA');
         }
-        const next = new Date(now);
-        next.setDate(next.getDate() + minOffset);
-        finalDueDate = next.toLocaleDateString('en-CA');
       }
     }
 

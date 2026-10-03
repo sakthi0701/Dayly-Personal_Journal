@@ -18,6 +18,13 @@ export interface NotToDoItem {
   emoji: string;
 }
 
+export interface LoggedDistraction {
+  label: string;
+  emoji: string;
+  timestamp: number;
+  elapsedSeconds: number;
+}
+
 export interface TimerState {
   status: TimerStatus;
   mode: TimerMode;
@@ -29,6 +36,7 @@ export interface TimerState {
   lastTick: number;       // timestamp of the last computed tick
   notToDoItems: NotToDoItem[];
   isBreak: boolean;
+  loggedDistractions: LoggedDistraction[];
 }
 
 export interface TimerStore extends TimerState {
@@ -47,6 +55,7 @@ export interface TimerStore extends TimerState {
   extendTimer: (minutes: number) => void;
   setTask: (task: TimerTask | null) => void;
   setNotToDoItems: (items: NotToDoItem[]) => void;
+  logDistraction: (item: { label: string; emoji: string }) => void;
   dismissTimer: () => void;
   tick: () => void;
 }
@@ -65,6 +74,7 @@ export const useTimerStore = create<TimerStore>((set, get) => ({
   lastTick: 0,
   notToDoItems: [],
   isBreak: false,
+  loggedDistractions: [],
   remaining: POMODORO_DURATION,
   isLoaded: false,
 
@@ -145,6 +155,7 @@ export const useTimerStore = create<TimerStore>((set, get) => ({
           lastTick: restoredStatus === 'running' ? Date.now() : (saved.lastTick ?? 0),
           notToDoItems: restoredStatus === 'idle' ? [] : (saved.notToDoItems ?? []),
           isBreak: saved.isBreak ?? false,
+          loggedDistractions: restoredStatus === 'idle' ? [] : (saved.loggedDistractions ?? []),
           remaining: restoredStatus === 'idle' ? plannedDuration : remaining,
           isLoaded: true,
         });
@@ -219,6 +230,7 @@ export const useTimerStore = create<TimerStore>((set, get) => ({
         lastTick: Date.now(),
         notToDoItems,
         isBreak,
+        loggedDistractions: [],
         remaining,
       });
     } catch (err) {
@@ -239,9 +251,20 @@ export const useTimerStore = create<TimerStore>((set, get) => ({
 
   completeTimer: async (reviewData) => {
     // BUG-4: Capture all values before set() so the API call uses pre-mutation state.
-    const { blockId, elapsed, task, notToDoItems, mode, duration } = get();
+    const { blockId, elapsed, task, notToDoItems, mode, duration, loggedDistractions } = get();
 
     const updatedTask = task ? { ...task, elapsed_pomodoros: task.elapsed_pomodoros + (mode === 'pomodoro' ? 1 : 0) } : null;
+
+    // Merge any distractions logged during the session (e.g. from PiP)
+    const loggedAsNotToDo: NotToDoItem[] = (loggedDistractions ?? []).map((d) => ({
+      label: d.label,
+      emoji: d.emoji,
+    }));
+    const combinedDistractionsMap = new Map<string, NotToDoItem>();
+    for (const d of [...(reviewData?.triggeredDistractions ?? []), ...loggedAsNotToDo]) {
+      combinedDistractionsMap.set(d.label, d);
+    }
+    const finalTriggeredDistractions = Array.from(combinedDistractionsMap.values());
 
     // Clear blockId immediately to prevent double-saves if Mark Done is clicked twice.
     set({
@@ -261,7 +284,7 @@ export const useTimerStore = create<TimerStore>((set, get) => ({
           total_duration: duration,  // BUG-4 fix: captured before set()
           task_id: task?.id ?? null,
           not_to_do_selected: notToDoItems,
-          triggered_distractions: reviewData?.triggeredDistractions ?? [],
+          triggered_distractions: finalTriggeredDistractions,
           completion_note: reviewData?.completionNote ?? null,
         }),
       });
@@ -293,6 +316,7 @@ export const useTimerStore = create<TimerStore>((set, get) => ({
       lastTick: 0,
       notToDoItems: [],
       isBreak: false,
+      loggedDistractions: [],
       remaining: mode === 'pomodoro' ? resetDuration : 0,
     });
 
@@ -355,6 +379,19 @@ export const useTimerStore = create<TimerStore>((set, get) => ({
     set({ notToDoItems });
   },
 
+  logDistraction: (item) => {
+    const { elapsed, loggedDistractions } = get();
+    const newEntry: LoggedDistraction = {
+      label: item.label,
+      emoji: item.emoji,
+      timestamp: Date.now(),
+      elapsedSeconds: elapsed,
+    };
+    set({
+      loggedDistractions: [...(loggedDistractions ?? []), newEntry],
+    });
+  },
+
   dismissTimer: () => {
     get().abandonTimer();
   },
@@ -377,6 +414,7 @@ if (typeof window !== 'undefined') {
         lastTick: state.lastTick,
         notToDoItems: state.notToDoItems,
         isBreak: state.isBreak,
+        loggedDistractions: state.loggedDistractions,
         _savedAt: Date.now(),
       };
       localStorage.setItem(LS_KEY, JSON.stringify(stateToSave));

@@ -15,6 +15,7 @@ class GoalsWidget : AppWidgetProvider() {
     companion object {
         private const val PREFS_FILE = "CapacitorStorage"
         private const val KEY_GOALS = "widget_goals"
+        private const val ACTION_REFRESH_MANUAL = "com.dayly.ACTION_REFRESH_MANUAL"
     }
 
     override fun onUpdate(
@@ -29,7 +30,10 @@ class GoalsWidget : AppWidgetProvider() {
 
     override fun onReceive(context: Context, intent: Intent) {
         super.onReceive(context, intent)
-        if (intent.action == "com.dayly.WIDGET_UPDATE") {
+        val action = intent.action ?: return
+        if (action == ACTION_REFRESH_MANUAL) {
+            WidgetSyncHelper.refreshDataFromServer(context)
+        } else if (action == "com.dayly.WIDGET_UPDATE" || action == AppWidgetManager.ACTION_APPWIDGET_UPDATE) {
             val manager = AppWidgetManager.getInstance(context)
             val ids = manager.getAppWidgetIds(
                 ComponentName(context, GoalsWidget::class.java)
@@ -95,8 +99,8 @@ class GoalsWidget : AppWidgetProvider() {
         }
 
         // ── Action: Refresh ───────────────────────────────────────────────────
-        val refreshIntent = Intent("com.dayly.WIDGET_UPDATE").apply {
-            component = ComponentName(context, GoalsWidget::class.java)
+        val refreshIntent = Intent(context, GoalsWidget::class.java).apply {
+            action = ACTION_REFRESH_MANUAL
         }
         val pendingRefresh = PendingIntent.getBroadcast(
             context, widgetId + 800000, refreshIntent,

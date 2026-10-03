@@ -15,6 +15,7 @@ class SunWarriorWidget : AppWidgetProvider() {
         private const val KEY_STREAK = "streak_days"
         private const val KEY_XP     = "xp"
         const val ACTION_REFRESH = "com.dayly.WIDGET_UPDATE"
+        private const val ACTION_REFRESH_MANUAL = "com.dayly.ACTION_REFRESH_MANUAL"
     }
 
     override fun onUpdate(
@@ -29,7 +30,10 @@ class SunWarriorWidget : AppWidgetProvider() {
 
     override fun onReceive(context: Context, intent: Intent) {
         super.onReceive(context, intent)
-        if (intent.action == ACTION_REFRESH) {
+        val action = intent.action ?: return
+        if (action == ACTION_REFRESH_MANUAL) {
+            WidgetSyncHelper.refreshDataFromServer(context)
+        } else if (action == ACTION_REFRESH || action == AppWidgetManager.ACTION_APPWIDGET_UPDATE) {
             val manager = AppWidgetManager.getInstance(context)
             val ids = manager.getAppWidgetIds(
                 ComponentName(context, SunWarriorWidget::class.java)
@@ -83,8 +87,8 @@ class SunWarriorWidget : AppWidgetProvider() {
         }
 
         // ── Action: Refresh ───────────────────────────────────────────────────
-        val refreshIntent = Intent(ACTION_REFRESH).apply {
-            component = ComponentName(context, SunWarriorWidget::class.java)
+        val refreshIntent = Intent(context, SunWarriorWidget::class.java).apply {
+            action = ACTION_REFRESH_MANUAL
         }
         val pendingRefresh = PendingIntent.getBroadcast(
             context,

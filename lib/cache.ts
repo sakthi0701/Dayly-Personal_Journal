@@ -279,12 +279,14 @@ export async function triggerWidgetDataSync(): Promise<void> {
 
     // Combined Task List: Pressure Tasks (max 2) + Normal Tasks
     const pTasks = (pressureRes.tasks ?? []).slice(0, 2).map((t: any) => ({
+      id: t.id,
       title: `🔥 ${t.title}`,
       progress: 0,
       isPressure: true
     }));
 
     const nTasks = (tasksRes.tasks ?? []).slice(0, 5 - pTasks.length).map((t: any) => ({
+      id: t.id,
       title: t.title,
       progress: t.status === 'in-progress' ? 50 : 0,
       isPressure: false

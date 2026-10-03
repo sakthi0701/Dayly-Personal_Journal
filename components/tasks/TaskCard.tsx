@@ -62,12 +62,19 @@ export default function TaskCard({ task, onUpdate, onDelete, onAddSubtask, onEdi
   const [expanded, setExpanded] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [isUpdating, setIsUpdating] = useState(false);
 
   const cfg = PRIORITY_CONFIG[task.priority];
 
   const cycleStatus = async () => {
-    const next = task.status === 'todo' ? 'in-progress' : task.status === 'in-progress' ? 'done' : 'todo';
-    await onUpdate(task.id, { status: next });
+    if (isUpdating) return;
+    setIsUpdating(true);
+    try {
+      const next = task.status === 'todo' ? 'in-progress' : task.status === 'in-progress' ? 'done' : 'todo';
+      await onUpdate(task.id, { status: next });
+    } finally {
+      setIsUpdating(false);
+    }
   };
 
   const handleDelete = async () => {
@@ -117,7 +124,8 @@ export default function TaskCard({ task, onUpdate, onDelete, onAddSubtask, onEdi
         {/* Status toggle */}
         <button
           onClick={cycleStatus}
-          className={`mt-0.5 shrink-0 transition-all hover:scale-110 ${statusColor}`}
+          disabled={isUpdating}
+          className={`mt-0.5 shrink-0 transition-all hover:scale-110 disabled:opacity-50 disabled:cursor-not-allowed ${statusColor}`}
           title={`Status: ${task.status}`}
         >
           <StatusIcon className="w-5 h-5" />
@@ -187,11 +195,11 @@ export default function TaskCard({ task, onUpdate, onDelete, onAddSubtask, onEdi
           <div className="flex items-center flex-wrap gap-x-3 gap-y-1 mt-2">
             <PomodoroRow total={task.estimated_pomodoros} elapsed={task.elapsed_pomodoros} />
 
-            {task.is_recurring && (() => {
+            {(task.is_recurring || !!task.recurrence_rule) && (() => {
               const rule = task.recurrence_rule ?? '';
               let label = 'Weekly';
               if (rule.startsWith('days:')) {
-                const days = rule.replace('days:', '').split(',').map((n) => parseInt(n, 10)).filter((n) => !isNaN(n));
+                const days = rule.replace('days:', '').split(',').map((n: string) => parseInt(n, 10)).filter((n: number) => !isNaN(n));
                 const sorted = [...days].sort((a, b) => (a === 0 ? 7 : a) - (b === 0 ? 7 : b));
                 const names = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
                 if (days.length === 7) {

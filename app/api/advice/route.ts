@@ -42,6 +42,7 @@ export async function POST(req: Request) {
       strictStatsRes,
       activeGoalsRes,
       habitLogsRes,
+      sessionReviewsRes,
     ] = await Promise.all([
       mem0.search(query, { userId: 'default_user', limit: 10 }),
       getUserStats(),
@@ -76,6 +77,12 @@ export async function POST(req: Request) {
         .from('habit_logs')
         .select('habit_id, logged_at, status, habits(name, color)')
         .gte('logged_at', thirtyDaysAgo),
+
+      // Recent session reviews for distraction tracking
+      supabase
+        .from('session_reviews')
+        .select('triggered_distractions')
+        .gte('created_at', sevenDaysAgo),
     ]);
 
     // --- Aggregate Execution Data ---
@@ -84,6 +91,7 @@ export async function POST(req: Request) {
     const strictBlocks = strictStatsRes.data ?? [];
     const activeGoals = activeGoalsRes.data ?? [];
     const habitLogs = habitLogsRes.data ?? [];
+    const sessionReviews = sessionReviewsRes?.data ?? [];
 
     // Pomodoro stats
     const totalPlanned = tasks.reduce((s, t) => s + (t.estimated_pomodoros ?? 0), 0);
@@ -167,6 +175,25 @@ export async function POST(req: Request) {
     const failedHabitsSummary =
       decayedHabits.length > 0 ? decayedHabits.join('; ') : 'No habit decay detected.';
 
+    // Distraction triggers
+    const distractionCounts = new Map<string, number>();
+    sessionReviews.forEach((r: { triggered_distractions?: unknown }) => {
+      const list = Array.isArray(r.triggered_distractions) ? r.triggered_distractions : [];
+      list.forEach((d: { label?: string }) => {
+        if (d?.label) {
+          distractionCounts.set(d.label, (distractionCounts.get(d.label) ?? 0) + 1);
+        }
+      });
+    });
+    const topDistractions = [...distractionCounts.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 4)
+      .map(([label, count]) => `${label} (${count}×)`)
+      .join(', ');
+    const distractionsSummary = topDistractions
+      ? `Frequent distraction triggers (last 7 days): ${topDistractions}`
+      : 'No distraction triggers recorded.';
+
     const executionData: ExecutionSummary = {
       totalPlanned,
       totalCompleted,
@@ -174,6 +201,7 @@ export async function POST(req: Request) {
       alignmentPercentage,
       goalDeadlinesSummary,
       failedHabitsSummary,
+      distractionsSummary,
     };
 
     // --- Journal memories from Mem0 ---

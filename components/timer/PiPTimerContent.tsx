@@ -1,8 +1,8 @@
 'use client';
 
 import { useTimer } from '@/components/timer/TimerProvider';
-import { Pause, Play, Square, PlusCircle, Coffee, RotateCcw, ExternalLink } from 'lucide-react';
-import { useCallback } from 'react';
+import { Pause, Play, PlusCircle, Coffee, RotateCcw, ExternalLink, Zap, X } from 'lucide-react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 
 function fmt(s: number) {
   const m = Math.floor(s / 60).toString().padStart(2, '0');
@@ -15,10 +15,18 @@ interface PiPTimerContentProps {
   onClose: () => void;
 }
 
+const DEFAULT_DISTRACTIONS = [
+  { label: 'Social Media', emoji: '📱' },
+  { label: 'Web Browsing', emoji: '🌐' },
+  { label: 'Chat / Interruption', emoji: '💬' },
+  { label: 'Mind Wandering', emoji: '💭' },
+  { label: 'Snack / Break', emoji: '☕' },
+];
+
 /**
  * Compact timer UI rendered inside the Document PiP window via React Portal.
  * Because createPortal keeps it in the React tree, useTimer() context works normally.
- * Handles both the running/paused state AND the post-session break prompt.
+ * Handles running/paused state, distraction logging with refocus prompt, AND post-session break prompt.
  */
 export default function PiPTimerContent({ onClose }: PiPTimerContentProps) {
   const remaining = useTimer(state => state.remaining);
@@ -28,6 +36,7 @@ export default function PiPTimerContent({ onClose }: PiPTimerContentProps) {
   const task = useTimer(state => state.task);
   const strictMode = useTimer(state => state.strictMode);
   const isBreak = useTimer(state => state.isBreak);
+  const notToDoItems = useTimer(state => state.notToDoItems);
   const pauseTimer = useTimer(state => state.pauseTimer);
   const resumeTimer = useTimer(state => state.resumeTimer);
   const abandonTimer = useTimer(state => state.abandonTimer);
@@ -35,6 +44,12 @@ export default function PiPTimerContent({ onClose }: PiPTimerContentProps) {
   const completeTimer = useTimer(state => state.completeTimer);
   const extendTimer = useTimer(state => state.extendTimer);
   const setDuration = useTimer(state => state.setDuration);
+  const logDistraction = useTimer(state => state.logDistraction);
+
+  const [showDistractionPicker, setShowDistractionPicker] = useState(false);
+  const [refocusPrompt, setRefocusPrompt] = useState<string | null>(null);
+  const refocusTimerRef = useRef<NodeJS.Timeout | null>(null);
+
   const state = { status, mode, duration, task, strictMode, isBreak };
 
   const isPaused = state.status === 'paused';
@@ -44,11 +59,106 @@ export default function PiPTimerContent({ onClose }: PiPTimerContentProps) {
     ? Math.max(0, Math.min(1, 1 - remaining / state.duration))
     : 0;
 
+  useEffect(() => {
+    return () => {
+      if (refocusTimerRef.current) clearTimeout(refocusTimerRef.current);
+    };
+  }, []);
+
+  const handleSelectDistraction = (item: { label: string; emoji: string }) => {
+    logDistraction(item);
+    setShowDistractionPicker(false);
+    setRefocusPrompt('Take a breath. Back to focus 🎯');
+
+    if (refocusTimerRef.current) clearTimeout(refocusTimerRef.current);
+    refocusTimerRef.current = setTimeout(() => {
+      setRefocusPrompt(null);
+    }, 3000);
+  };
+
   // ── Break handlers (same logic as GlobalTimerUI) ──────────────────────────
   const handleBreakExtend = useCallback(() => {
     extendTimer(1);
-    // Keep PiP open — the reducer transitions status to 'running' atomically
   }, [extendTimer]);
+
+  // ── Refocus Encouragement Screen (3-second duration) ──────────────────────
+  if (refocusPrompt) {
+    return (
+      <div
+        className="flex flex-col items-center justify-center h-screen bg-zinc-950 text-white select-none px-4 text-center cursor-pointer transition-all"
+        style={{ fontFamily: 'Inter, system-ui, -apple-system, sans-serif' }}
+        onClick={() => {
+          if (refocusTimerRef.current) clearTimeout(refocusTimerRef.current);
+          setRefocusPrompt(null);
+        }}
+        title="Click anywhere to return to timer"
+      >
+        <div className="w-10 h-10 rounded-full bg-amber-500/20 border border-amber-500/40 flex items-center justify-center text-xl mb-2.5 shadow-lg shadow-amber-500/10 animate-bounce">
+          🎯
+        </div>
+        <p className="text-sm font-semibold text-white">Distraction Logged</p>
+        <p className="text-xs text-amber-300 font-medium mt-1 mb-2">
+          {refocusPrompt}
+        </p>
+        <p className="text-[10px] text-zinc-500">Tap anywhere to resume timer</p>
+      </div>
+    );
+  }
+
+  // ── Quick-tap Distraction Picker Screen ───────────────────────────────────
+  if (showDistractionPicker) {
+    // Session not-to-dos first, supplemented by defaults
+    const combinedPresets = [
+      ...(notToDoItems ?? []),
+      ...DEFAULT_DISTRACTIONS.filter(
+        (d) => !(notToDoItems ?? []).some((n) => n.label.toLowerCase() === d.label.toLowerCase())
+      ),
+    ];
+
+    return (
+      <div
+        className="flex flex-col h-screen bg-zinc-950 text-white select-none p-3 justify-between"
+        style={{ fontFamily: 'Inter, system-ui, -apple-system, sans-serif' }}
+      >
+        <div className="flex items-center justify-between pb-1.5 border-b border-zinc-800/80">
+          <div className="flex items-center gap-1.5">
+            <Zap className="w-3.5 h-3.5 text-amber-400" />
+            <span className="text-xs font-semibold text-zinc-200">What pulled you away?</span>
+          </div>
+          <button
+            onClick={() => setShowDistractionPicker(false)}
+            className="text-[11px] text-zinc-500 hover:text-zinc-300 p-1 rounded hover:bg-zinc-800 transition-colors"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+
+        {/* Quick-tap preset chips */}
+        <div className="grid grid-cols-2 gap-1.5 my-auto overflow-y-auto max-h-[115px] py-1 scrollbar-none">
+          {combinedPresets.slice(0, 6).map((item) => (
+            <button
+              key={item.label}
+              onClick={() => handleSelectDistraction(item)}
+              className="flex items-center gap-1.5 px-2.5 py-2 bg-zinc-900 hover:bg-amber-500/15 border border-zinc-800 hover:border-amber-500/40 text-zinc-300 hover:text-amber-200 rounded-xl text-xs font-medium transition-all text-left truncate active:scale-95 shadow-sm"
+            >
+              <span className="text-sm shrink-0">{item.emoji}</span>
+              <span className="truncate">{item.label}</span>
+            </button>
+          ))}
+        </div>
+
+        <div className="pt-1 flex items-center justify-between text-[10px] text-zinc-500">
+          <span>1-tap to log & refocus</span>
+          <button
+            onClick={() => setShowDistractionPicker(false)}
+            className="text-zinc-400 hover:text-white transition-colors"
+          >
+            Cancel
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   // ── Completed / Break Prompt ──────────────────────────────────────────────
   if (isCompleted) {
@@ -190,13 +300,14 @@ export default function PiPTimerContent({ onClose }: PiPTimerContentProps) {
           </button>
         )}
 
-        {/* Stop */}
+        {/* Distracted button replacing abandon button */}
         <button
-          onClick={() => { abandonTimer(); onClose(); }}
-          title="Stop session and close"
-          className="p-2.5 rounded-xl bg-zinc-800 hover:bg-red-500/15 text-zinc-600 hover:text-red-400 border border-zinc-700/50 hover:border-red-500/20 transition-all"
+          onClick={() => setShowDistractionPicker(true)}
+          title="I got distracted (Log & Refocus)"
+          className="flex items-center gap-1.5 px-3 py-2.5 rounded-xl text-xs font-semibold bg-zinc-800 hover:bg-amber-500/15 text-zinc-300 hover:text-amber-300 border border-zinc-700/50 hover:border-amber-500/30 transition-all active:scale-95"
         >
-          <Square className="w-4 h-4" />
+          <Zap className="w-3.5 h-3.5 text-amber-400" />
+          <span>Distracted</span>
         </button>
       </div>
     </div>
