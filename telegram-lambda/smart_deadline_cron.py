@@ -366,10 +366,84 @@ def lambda_handler(event, context):
             time_str = dt.strftime("%I:%M %p")
             lines.append(f"  {urgency} {t['title']}{mins} ← due at {time_str}")
 
-        lines.append("\n_Mark complete in the app or reply /pressure to review._")
+        lines.append("\n_Mark complete in the app or send a voice note to log it._")
         send_telegram(BOT_TOKEN, CHAT_ID, "\n".join(lines))
         messages_sent += 1
         print(f"[Cron] Time-specific alert sent: {len(time_specific_due)} task(s)")
+
+    # ── 4. DYNAMIC REMINDERS (from telegram_reminders table) ──────────────────
+    # The AI agent creates these on request ("remind me at 3pm to take medicine")
+    # We check for any reminders whose remind_at falls in the current 30-min slot.
+    active_reminders = supabase_get(SUPABASE_URL, SUPABASE_ANON_KEY, "telegram_reminders", {
+        "select": "id,label,message,remind_at,is_recurring,recur_every_minutes",
+        "is_active": "eq.true",
+        "order": "remind_at.asc",
+    })
+
+    for reminder in active_reminders:
+        raw_at = reminder.get("remind_at")
+        if not raw_at:
+            continue
+
+        # Parse the remind_at timestamp (stored in UTC by the Vercel route)
+        try:
+            # Handle ISO format with or without timezone
+            raw_at = raw_at.replace("Z", "+00:00")
+            remind_utc = datetime.fromisoformat(raw_at)
+            if remind_utc.tzinfo is None:
+                remind_utc = remind_utc.replace(tzinfo=timezone.utc)
+            remind_ist = remind_utc.astimezone(IST)
+        except (ValueError, AttributeError) as e:
+            print(f"[Cron] Could not parse reminder remind_at: {raw_at!r} — {e}")
+            continue
+
+        if not deadline_in_slot(remind_ist, slot_start, slot_end):
+            continue
+
+        # Fire the reminder
+        label = reminder.get("label", "Reminder")
+        message = reminder.get("message", "")
+        send_telegram(BOT_TOKEN, CHAT_ID, f"🔔 *{label}*\n\n{message}")
+        messages_sent += 1
+        print(f"[Cron] Dynamic reminder fired: '{label}'")
+
+        # Update the reminder in Supabase
+        reminder_id = reminder["id"]
+        is_recurring = reminder.get("is_recurring", False)
+        recur_mins = reminder.get("recur_every_minutes")
+        now_utc = datetime.now(timezone.utc)
+
+        if is_recurring and recur_mins:
+            # Advance remind_at by the recurrence interval
+            next_fire_utc = remind_utc + timedelta(minutes=int(recur_mins))
+            update_payload = json.dumps({
+                "last_sent_at": now_utc.isoformat(),
+                "remind_at": next_fire_utc.isoformat(),
+            }).encode("utf-8")
+        else:
+            # One-time reminder — deactivate
+            update_payload = json.dumps({
+                "last_sent_at": now_utc.isoformat(),
+                "is_active": False,
+            }).encode("utf-8")
+
+        update_url = f"{SUPABASE_URL}/rest/v1/telegram_reminders?id=eq.{reminder_id}"
+        update_req = urllib.request.Request(
+            update_url,
+            data=update_payload,
+            headers={
+                "apikey": SUPABASE_ANON_KEY,
+                "Authorization": f"Bearer {SUPABASE_ANON_KEY}",
+                "Content-Type": "application/json",
+                "Prefer": "return=minimal",
+            },
+            method="PATCH",
+        )
+        try:
+            with urllib.request.urlopen(update_req, timeout=10):
+                pass
+        except Exception as e:
+            print(f"[Cron] Failed to update reminder {reminder_id}: {e}")
 
     print(f"[Cron] Done. {messages_sent} message(s) sent.")
     return {
@@ -382,3 +456,4 @@ def lambda_handler(event, context):
             "time_specific_alerts": len(time_specific_due) if 'time_specific_due' in dir() else 0,
         }),
     }
+

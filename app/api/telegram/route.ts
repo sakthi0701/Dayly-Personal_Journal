@@ -1,29 +1,43 @@
-import { NextResponse } from 'next/server';
-import { supabase } from '@/lib/supabase';
-import { mem0 } from '@/lib/ai/memory';
-import { generateEmbedding } from '@/lib/embeddings';
-import { sendTelegramMessage } from '@/lib/telegram';
-import { generateGoDeeperQuestion, generateTelegramResponse } from '@/lib/ai/groq';
-import { updateUserStatsOnEntry, getUserStats, calculateLevel } from '@/lib/gamification';
-import { stripHtml } from '@/lib/utils/text';
-import { toRelativeDate } from '@/lib/utils/date';
+/**
+ * app/api/telegram/route.ts
+ *
+ * Telegram webhook entry point — intentionally thin.
+ * All AI logic lives in lib/telegram-agent/.
+ *
+ * Flow:
+ *   1. Parse update
+ *   2. Idempotency check (drop Telegram retries)
+ *   3. Auth guard (only respond to owner's chat)
+ *   4. Voice? → Whisper transcription
+ *   5. Load pipeline context + run agent
+ *   6. Send reply to Telegram
+ *   7. after() → save history, background embedding (non-blocking)
+ */
 
+import { NextResponse, after } from 'next/server';
+import { supabase } from '@/lib/supabase';
+import { transcribeAudio } from '@/lib/ai/groq';
+import { sendTelegramMessage } from '@/lib/telegram';
+import { runAgentPipeline, saveHistory, processJournalBackground } from '@/lib/telegram-agent/pipeline';
 
 export const dynamic = 'force-dynamic';
+// Extend function timeout for LLM calls (Vercel Pro: up to 300s; Hobby: 60s)
+export const maxDuration = 60;
 
-// ─── Types ────────────────────────────────────────────────────────────────────
+// ─── Telegram types ────────────────────────────────────────────────────────────
 
-interface TelegramUser {
-  id: number;
-  first_name?: string;
-  username?: string;
+interface TelegramVoice {
+  file_id: string;
+  duration: number;
+  mime_type?: string;
 }
 
 interface TelegramMessage {
   message_id: number;
-  from?: TelegramUser;
+  from?: { id: number; first_name?: string; username?: string };
   chat: { id: number };
   text?: string;
+  voice?: TelegramVoice;
   date: number;
 }
 
@@ -32,470 +46,167 @@ interface TelegramUpdate {
   message?: TelegramMessage;
 }
 
-// ─── Auth guard ───────────────────────────────────────────────────────────────
+// ─── Auth guard ────────────────────────────────────────────────────────────────
 
 function isAuthorized(chatId: number): boolean {
-  const allowedId = process.env.TELEGRAM_CHAT_ID;
-  return allowedId ? String(chatId) === String(allowedId) : false;
+  const allowed = process.env.TELEGRAM_CHAT_ID;
+  return allowed ? String(chatId) === String(allowed) : false;
 }
 
-// ─── IST helpers ─────────────────────────────────────────────────────────────
+// ─── IST datetime string ───────────────────────────────────────────────────────
 
-function getTodayISTWindow(): { start: string; end: string } {
-  const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
-  const nowIST = new Date(Date.now() + IST_OFFSET_MS);
-  const midnightIST = new Date(nowIST);
-  midnightIST.setUTCHours(0, 0, 0, 0);
-  const start = new Date(midnightIST.getTime() - IST_OFFSET_MS).toISOString();
-  const end = new Date(midnightIST.getTime() + 24 * 60 * 60 * 1000 - IST_OFFSET_MS).toISOString();
-  return { start, end };
-}
-
-function getTimeIST(): string {
-  return new Date().toLocaleTimeString('en-IN', {
+function getISTDateTimeString(): string {
+  return new Date().toLocaleString('en-IN', {
+    timeZone: 'Asia/Kolkata',
+    weekday: 'long',
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
     hour: '2-digit',
     minute: '2-digit',
     hour12: true,
-    timeZone: 'Asia/Kolkata',
   });
 }
 
-// ─── Command handlers ─────────────────────────────────────────────────────────
+// ─── Voice: download and transcribe ───────────────────────────────────────────
 
-/**
- * /journal <text>  — save a journal entry (appends to today's, runs AI)
- * Free text (no command) also triggers this.
- */
-async function handleJournal(text: string, chatId: number): Promise<string> {
-  const cleanMessage = text.trim();
-  if (!cleanMessage) return '❌ Please provide journal content after /journal';
+async function transcribeVoiceMessage(voice: TelegramVoice): Promise<string> {
+  const token = process.env.TELEGRAM_BOT_TOKEN!;
 
-  const { start, end } = getTodayISTWindow();
-  const timeIST = getTimeIST();
-
-  // Find or create today's plain-text entry
-  const { data: todayEntries } = await supabase
-    .from('entries')
-    .select('id, content')
-    .gte('created_at', start)
-    .lt('created_at', end)
-    .order('created_at', { ascending: true });
-
-  const existingEntry = (todayEntries ?? []).find(
-    (e) => e.content && !e.content.trimStart().startsWith('<')
-  ) ?? null;
-
-  let entryId: string;
-  let fullContent: string;
-
-  if (existingEntry) {
-    fullContent = `${existingEntry.content}\n\n${timeIST} · ${cleanMessage}`;
-    const { error } = await supabase
-      .from('entries')
-      .update({ content: fullContent })
-      .eq('id', existingEntry.id);
-    if (error) throw new Error(`DB update failed: ${error.message}`);
-    entryId = existingEntry.id;
-  } else {
-    fullContent = `${timeIST} · ${cleanMessage}`;
-    const { data: newEntry, error } = await supabase
-      .from('entries')
-      .insert({ content: fullContent, created_at: new Date().toISOString() })
-      .select('id')
-      .single();
-    if (error) throw new Error(`DB insert failed: ${error.message}`);
-    entryId = newEntry.id;
-    try { await updateUserStatsOnEntry(); } catch (e) {
-      console.error('[Telegram] Stats update failed:', e);
-    }
+  // Step 1: Get file path from Telegram
+  const fileRes = await fetch(`https://api.telegram.org/bot${token}/getFile?file_id=${voice.file_id}`);
+  const fileData = await fileRes.json();
+  if (!fileData.ok || !fileData.result?.file_path) {
+    throw new Error('Failed to get voice file path from Telegram');
   }
 
-  // Background: embed + Mem0
-  (async () => {
-    try {
-      const embedding = await generateEmbedding(fullContent);
-      await supabase.from('entries').update({ embedding }).eq('id', entryId);
-    } catch (e) { console.error('[Telegram] Embedding failed:', e); }
-    try {
-      await mem0.add(cleanMessage, { userId: 'default_user', metadata: { entry_id: entryId } });
-    } catch (e) { console.error('[Telegram] Mem0 add failed:', e); }
-  })();
+  // Step 2: Download the audio
+  const audioUrl = `https://api.telegram.org/file/bot${token}/${fileData.result.file_path}`;
+  const audioRes = await fetch(audioUrl);
+  if (!audioRes.ok) throw new Error('Failed to download voice audio');
 
-  // Build dated context for Sensei question
-  let datedContext: { content: string; date: string }[] = [];
-  try {
-    const searchResults = await mem0.search(cleanMessage, { userId: 'default_user', limit: 15 });
-    if (searchResults?.results?.length > 0) {
-      datedContext = searchResults.results.map((res: { memory: string; createdAt?: string }) => ({
-        content: res.memory,
-        date: toRelativeDate(res.createdAt ?? new Date().toISOString()),
-      }));
-    }
-  } catch (e) {
-    console.error('[Telegram] mem0 search failed, falling back:', e);
-  }
+  const audioBuffer = await audioRes.arrayBuffer();
+  const mimeType = voice.mime_type ?? 'audio/ogg';
+  const ext = mimeType.includes('ogg') ? 'ogg' : mimeType.includes('mp4') ? 'mp4' : 'ogg';
 
-  if (datedContext.length === 0) {
-    const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString();
-    const { data: recentEntries } = await supabase
-      .from('entries')
-      .select('content, created_at')
-      .gte('created_at', thirtyDaysAgo)
-      .order('created_at', { ascending: false })
-      .limit(20);
-    datedContext = (recentEntries ?? [])
-      .map((e) => ({
-        content: e.content?.trimStart().startsWith('<')
-          ? stripHtml(e.content)
-          : (e.content ?? ''),
-        date: toRelativeDate(e.created_at),
-      }))
-      .filter((e) => e.content.trim().length > 10)
-      .slice(0, 15);
-  }
-
-  const question = await generateGoDeeperQuestion(fullContent, datedContext);
-  return `✅ *Journal saved!*\n\n🧠 *Sensei asks:*\n\n${question}`;
+  // Step 3: Create File and transcribe via Whisper
+  const audioFile = new File([audioBuffer], `voice.${ext}`, { type: mimeType });
+  return await transcribeAudio(audioFile);
 }
 
-/**
- * /habits  — list today's habits with completion status
- */
-async function handleHabits(): Promise<string> {
-  const { start, end } = getTodayISTWindow();
-
-  const { data: habits, error } = await supabase
-    .from('habits')
-    .select('id, name, icon, frequency, habit_type')
-    .order('created_at', { ascending: false });
-
-  if (error) throw new Error(error.message);
-  if (!habits || habits.length === 0) return '📋 No habits found. Add some in the app!';
-
-  // Fetch today's logs
-  const { data: todayLogs } = await supabase
-    .from('habit_logs')
-    .select('habit_id, status')
-    .gte('logged_at', start)
-    .lt('logged_at', end);
-
-  const loggedToday = new Set((todayLogs ?? []).filter(l => l.status === 'success').map(l => l.habit_id));
-
-  const lines = habits.map((h) => {
-    const done = loggedToday.has(h.id);
-    const badge = done ? '✅' : '⬜';
-    return `${badge} ${h.icon ?? '✨'} ${h.name}`;
-  });
-
-  const doneCount = loggedToday.size;
-  return `*📋 Today's Habits* (${doneCount}/${habits.length} done)\n\n${lines.join('\n')}\n\n_Use /loghabit <name> to mark done_`;
-}
-
-/**
- * /loghabit <habit name or partial>  — mark a habit as done today
- */
-async function handleLogHabit(query: string): Promise<string> {
-  if (!query.trim()) return '❌ Usage: /loghabit <habit name>';
-
-  const { data: habits } = await supabase
-    .from('habits')
-    .select('id, name, icon')
-    .ilike('name', `%${query.trim()}%`)
-    .limit(1);
-
-  if (!habits || habits.length === 0) {
-    return `❌ No habit matching "${query}". Check /habits for the full list.`;
-  }
-
-  const habit = habits[0];
-  const { start, end } = getTodayISTWindow();
-
-  // Check if already logged
-  const { data: existing } = await supabase
-    .from('habit_logs')
-    .select('id')
-    .eq('habit_id', habit.id)
-    .gte('logged_at', start)
-    .lt('logged_at', end)
-    .limit(1);
-
-  if (existing && existing.length > 0) {
-    return `ℹ️ *${habit.icon} ${habit.name}* already logged today!`;
-  }
-
-  const { error } = await supabase
-    .from('habit_logs')
-    .insert({ habit_id: habit.id, status: 'success', logged_at: new Date().toISOString() });
-
-  if (error) throw new Error(error.message);
-
-  return `✅ *${habit.icon} ${habit.name}* marked as done! 🔥`;
-}
-
-/**
- * /tasks  — list today's active tasks
- */
-async function handleTasks(): Promise<string> {
-  const { data: tasks, error } = await supabase
-    .from('tasks')
-    .select('id, title, status, priority, estimated_pomodoros, elapsed_pomodoros')
-    .in('status', ['todo', 'in-progress'])
-    .is('parent_task_id', null)
-    .order('priority', { ascending: true })
-    .limit(15);
-
-  if (error) throw new Error(error.message);
-  if (!tasks || tasks.length === 0) return '🎉 No active tasks! You\'re all caught up.';
-
-  const lines = tasks.map((t) => {
-    const statusIcon = t.status === 'in-progress' ? '🔄' : '⬜';
-    const pomo = t.estimated_pomodoros
-      ? ` _(${t.elapsed_pomodoros ?? 0}/${t.estimated_pomodoros} 🍅)_`
-      : '';
-    return `${statusIcon} ${t.title}${pomo}`;
-  });
-
-  return `*📌 Active Tasks* (${tasks.length})\n\n${lines.join('\n')}`;
-}
-
-/**
- * /addtask <title>  — create a new task
- */
-async function handleAddTask(title: string): Promise<string> {
-  if (!title.trim()) return '❌ Usage: /addtask <task title>';
-
-  const { data: task, error } = await supabase
-    .from('tasks')
-    .insert({ title: title.trim(), status: 'todo' })
-    .select('id, title')
-    .single();
-
-  if (error) throw new Error(error.message);
-
-  return `✅ Task created: *${task.title}*`;
-}
-
-/**
- * /pressure  — list active pressure plan tasks
- */
-async function handlePressure(): Promise<string> {
-  const { data: tasks, error } = await supabase
-    .from('pressure_tasks')
-    .select('id, title, priority, deadline, status, estimated_minutes')
-    .in('status', ['todo', 'snoozed'])
-    .order('priority', { ascending: true })
-    .order('deadline', { ascending: true, nullsFirst: false })
-    .limit(15);
-
-  if (error) throw new Error(error.message);
-  if (!tasks || tasks.length === 0) return '🎉 No active pressure tasks!';
-
-  const now = new Date();
-  const lines = tasks.map((t) => {
-    const urgency = t.priority <= 1 ? '🔴' : t.priority <= 2 ? '🟠' : '🟡';
-    const deadline = t.deadline
-      ? ` · 📅 ${new Date(t.deadline).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', timeZone: 'Asia/Kolkata' })}`
-      : '';
-    const overdue = t.deadline && new Date(t.deadline) < now ? ' ⚠️' : '';
-    const mins = t.estimated_minutes ? ` _(~${t.estimated_minutes}m)_` : '';
-    return `${urgency} ${t.title}${mins}${deadline}${overdue}`;
-  });
-
-  return `*⚡ Pressure Plan Tasks* (${tasks.length})\n\n${lines.join('\n')}`;
-}
-
-/**
- * /addpressure <title>  — create a new pressure task
- */
-async function handleAddPressure(title: string): Promise<string> {
-  if (!title.trim()) return '❌ Usage: /addpressure <task title>';
-
-  const { data: task, error } = await supabase
-    .from('pressure_tasks')
-    .insert({ title: title.trim(), priority: 1, status: 'todo' })
-    .select('id, title')
-    .single();
-
-  if (error) throw new Error(error.message);
-
-  return `⚡ Pressure task created: *${task.title}*`;
-}
-
-/**
- * /stats  — show Sensei page stats (XP, level, focus time)
- */
-async function handleStats(): Promise<string> {
-  // User stats + level
-  const stats = await getUserStats();
-  if (!stats) return '❌ Could not fetch stats.';
-
-  const levelData = calculateLevel(stats.xp);
-
-  // Focus time today
-  const { start, end } = getTodayISTWindow();
-  const { data: todayBlocks } = await supabase
-    .from('time_blocks')
-    .select('duration, completed')
-    .gte('created_at', start)
-    .lt('created_at', end);
-
-  const todaySeconds = (todayBlocks ?? [])
-    .filter(b => b.completed && b.duration > 0)
-    .reduce((s, b) => s + b.duration, 0);
-  const todayMins = Math.round(todaySeconds / 60);
-
-  // 7-day focus
-  const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
-  const { data: weekBlocks } = await supabase
-    .from('time_blocks')
-    .select('duration, completed')
-    .gte('created_at', sevenDaysAgo);
-
-  const weekSeconds = (weekBlocks ?? [])
-    .filter(b => b.completed && b.duration > 0)
-    .reduce((s, b) => s + b.duration, 0);
-  const weekMins = Math.round(weekSeconds / 60);
-
-  // Habit streak data
-  const { data: habits } = await supabase
-    .from('habits')
-    .select('id, name, icon')
-    .order('created_at', { ascending: false })
-    .limit(5);
-
-  const habitLines = (habits ?? []).map(h => `  • ${h.icon ?? '✨'} ${h.name}`).join('\n');
-
-  return (
-    `*📊 Dayly Stats — Sensei Dashboard*\n\n` +
-    `🏆 *Level ${levelData.level}* — ${levelData.title}\n` +
-    `⚡ XP: ${stats.xp} _(${levelData.progressPercent}% to next)_\n` +
-    `🔥 Streak: ${stats.streak_days ?? 0} days\n\n` +
-    `⏱ *Focus Today:* ${todayMins} min\n` +
-    `📅 *Focus This Week:* ${weekMins} min\n\n` +
-    (habits && habits.length > 0
-      ? `🌱 *Recent Habits:*\n${habitLines}\n\n`
-      : '') +
-    `_Open the Sensei page for full insights._`
-  );
-}
-
-/**
- * /help  — show all available commands
- */
-function handleHelp(): string {
-  return (
-    `*🤖 Dayly Bot — Commands*\n\n` +
-    `*📝 Journal*\n` +
-    `/journal <text> — Save a journal entry & get Sensei question\n` +
-    `_(or just send any text without a command)_\n\n` +
-    `*🌱 Habits*\n` +
-    `/habits — View today's habits\n` +
-    `/loghabit <name> — Mark a habit as done today\n\n` +
-    `*📌 Tasks*\n` +
-    `/tasks — View active tasks\n` +
-    `/addtask <title> — Create a new task\n\n` +
-    `*⚡ Pressure Plan*\n` +
-    `/pressure — View active pressure tasks\n` +
-    `/addpressure <title> — Create a new pressure task\n\n` +
-    `*📊 Stats*\n` +
-    `/stats — View Sensei dashboard stats\n\n` +
-    `/help — Show this message`
-  );
-}
-
-// ─── Main POST handler (Telegram webhook) ────────────────────────────────────
+// ─── Main POST handler ─────────────────────────────────────────────────────────
 
 export async function POST(request: Request) {
+  let update: TelegramUpdate;
   try {
-    const update: TelegramUpdate = await request.json();
-    const msg = update.message;
+    update = await request.json();
+  } catch {
+    return NextResponse.json({ ok: true }); // Malformed body — silently ignore
+  }
 
-    // Ignore non-text updates (photos, stickers, etc.)
-    if (!msg?.text) {
+  const msg = update.message;
+
+  // Only handle messages
+  if (!msg) return NextResponse.json({ ok: true });
+
+  const chatId = msg.chat.id;
+  const updateId = update.update_id;
+
+  // ── 1. Idempotency: drop duplicate webhook deliveries ─────────────────────
+  try {
+    const { error: dupError } = await supabase
+      .from('telegram_processed_updates')
+      .insert({ update_id: updateId });
+
+    if (dupError?.code === '23505') {
+      // Unique violation → already processed this update
+      console.log(`[Telegram] Duplicate update_id ${updateId} — skipping`);
       return NextResponse.json({ ok: true });
     }
+  } catch (e) {
+    console.error('[Telegram] Idempotency check error:', e);
+    // Don't block — continue processing
+  }
 
-    const chatId = msg.chat.id;
-    const rawText = msg.text.trim();
+  // ── 2. Auth ───────────────────────────────────────────────────────────────
+  if (!isAuthorized(chatId)) {
+    console.warn(`[Telegram] Unauthorized message from chat ${chatId}`);
+    return NextResponse.json({ ok: true });
+  }
 
-    // ── Security: only respond to the owner's chat ───────────────────────────
-    if (!isAuthorized(chatId)) {
-      console.warn(`[Telegram] Unauthorized message from chat ${chatId}`);
-      return NextResponse.json({ ok: true }); // Silently ignore
-    }
+  // ── 3. Extract text (or transcribe voice) ─────────────────────────────────
+  let userText: string | null = null;
+  let wasVoice = false;
 
-    console.log(`[Telegram] Received from ${chatId}: "${rawText.substring(0, 60)}"`);
-
-    // ── Route commands ────────────────────────────────────────────────────────
-    let replyText: string;
-
+  if (msg.text?.trim()) {
+    userText = msg.text.trim();
+  } else if (msg.voice) {
     try {
-      if (rawText.startsWith('/start') || rawText.startsWith('/help')) {
-        replyText = handleHelp();
+      userText = await transcribeVoiceMessage(msg.voice);
+      wasVoice = true;
+      console.log(`[Telegram] Voice transcribed: "${userText?.slice(0, 80)}"`);
+    } catch (err) {
+      console.error('[Telegram] Voice transcription failed:', err);
+      await sendTelegramMessage('❌ Could not transcribe your voice message. Please try again or type it.', { chatId: String(chatId) });
+      return NextResponse.json({ ok: true });
+    }
+  }
 
-      } else if (rawText.startsWith('/journal ') || rawText.startsWith('/journal@')) {
-        const text = rawText.replace(/^\/journal(@\S+)?\s*/, '');
-        replyText = await handleJournal(text, chatId);
+  if (!userText) {
+    // Photo/sticker/other — silently ignore
+    return NextResponse.json({ ok: true });
+  }
 
-      } else if (rawText.startsWith('/habits')) {
-        replyText = await handleHabits();
-        replyText = await generateTelegramResponse(replyText, rawText, 'habits');
+  console.log(`[Telegram] [${chatId}] ${wasVoice ? '🎤' : '💬'} "${userText.slice(0, 80)}"`);
 
-      } else if (rawText.startsWith('/loghabit')) {
-        const query = rawText.replace(/^\/loghabit(@\S+)?\s*/, '');
-        replyText = await handleLogHabit(query);
-        replyText = await generateTelegramResponse(replyText, rawText, 'loghabit');
+  // ── 4. Run agent pipeline ─────────────────────────────────────────────────
+  const istDateTime = getISTDateTimeString();
+  let agentResult: Awaited<ReturnType<typeof runAgentPipeline>>;
 
-      } else if (rawText.startsWith('/tasks')) {
-        replyText = await handleTasks();
-        replyText = await generateTelegramResponse(replyText, rawText, 'tasks');
+  try {
+    agentResult = await runAgentPipeline(userText, istDateTime);
+  } catch (err) {
+    console.error('[Telegram] Agent pipeline failed:', err);
+    await sendTelegramMessage('❌ Something went wrong. Please try again.', { chatId: String(chatId) });
+    return NextResponse.json({ ok: true });
+  }
 
-      } else if (rawText.startsWith('/addtask ') || rawText.startsWith('/addtask@')) {
-        const title = rawText.replace(/^\/addtask(@\S+)?\s*/, '');
-        replyText = await handleAddTask(title);
+  // ── 5. Send reply ──────────────────────────────────────────────────────────
+  const replyText = wasVoice
+    ? `🎤 _Heard: "${userText.slice(0, 60)}${userText.length > 60 ? '...' : ''}"_\n\n${agentResult.response}`
+    : agentResult.response;
 
-      } else if (rawText.startsWith('/pressure')) {
-        replyText = await handlePressure();
-        replyText = await generateTelegramResponse(replyText, rawText, 'pressure');
+  await sendTelegramMessage(replyText, { chatId: String(chatId) });
 
-      } else if (rawText.startsWith('/addpressure ') || rawText.startsWith('/addpressure@')) {
-        const title = rawText.replace(/^\/addpressure(@\S+)?\s*/, '');
-        replyText = await handleAddPressure(title);
+  // ── 6. Background work (non-blocking via after()) ──────────────────────────
+  // This runs AFTER the response is returned to Telegram, preventing timeouts.
+  after(async () => {
+    try {
+      // Save conversation history
+      await Promise.all([
+        saveHistory('user', userText!),
+        saveHistory('assistant', agentResult.response),
+      ]);
 
-      } else if (rawText.startsWith('/stats')) {
-        replyText = await handleStats();
-        replyText = await generateTelegramResponse(replyText, rawText, 'stats');
-
-      } else if (rawText.startsWith('/')) {
-        replyText = `❓ Unknown command. Use /help to see all commands.`;
-
-      } else {
-        // Free text → treat as journal entry
-        replyText = await handleJournal(rawText, chatId);
+      // Background journal embedding (slow — Mem0 + vector)
+      if (agentResult.journalEntryId) {
+        await processJournalBackground(agentResult.journalEntryId, userText!);
       }
     } catch (err) {
-      const msg = err instanceof Error ? err.message : String(err);
-      console.error('[Telegram] Command handler error:', err);
-      replyText = `❌ Something went wrong: ${msg}`;
+      console.error('[Telegram] Background work failed:', err);
     }
+  });
 
-    // ── Send reply ────────────────────────────────────────────────────────────
-    await sendTelegramMessage(replyText, { chatId: String(chatId) });
-
-    return NextResponse.json({ ok: true });
-
-  } catch (error) {
-    const msg = error instanceof Error ? error.message : String(error);
-    console.error('[Telegram] Unhandled error:', error);
-    return NextResponse.json({ error: `Internal Server Error: ${msg}` }, { status: 500 });
-  }
+  return NextResponse.json({ ok: true });
 }
 
-// ─── GET handler — used by the polling bot to verify the route is live ────────
+// ─── GET handler — health check ───────────────────────────────────────────────
 export async function GET() {
   return NextResponse.json({
     ok: true,
-    service: 'Dayly Telegram Bot Webhook',
-    commands: ['/journal', '/habits', '/loghabit', '/tasks', '/addtask', '/pressure', '/addpressure', '/stats', '/help'],
+    service: 'Dayly Telegram AI Agent',
+    version: '2.0',
+    architecture: 'two-tier LLM (gpt-oss-20b router + gpt-oss-120b sensei)',
+    features: ['natural-language', 'voice-journaling', 'habit-logging', 'task-management', 'dynamic-reminders'],
   });
 }

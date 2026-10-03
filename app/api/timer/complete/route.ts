@@ -1,6 +1,7 @@
-import { NextResponse } from 'next/server';
+import { NextResponse, after } from 'next/server';
 import { supabase } from '@/lib/supabase';
 import { addXP } from '@/lib/gamification';
+import { notifyTelegram } from '@/lib/telegram';
 
 export async function POST(request: Request) {
   try {
@@ -181,6 +182,55 @@ export async function POST(request: Request) {
       xp_deducted: xpDeducted,
       completion_note: completion_note ?? null,
       session_duration_seconds: duration ?? null,
+    });
+
+    // ── Telegram pomodoro notification (fire-and-forget, non-blocking) ──────
+    after(async () => {
+      try {
+        // Count pomodoros completed today
+        const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
+        const nowIST = new Date(Date.now() + IST_OFFSET_MS);
+        const midnightIST = new Date(nowIST);
+        midnightIST.setUTCHours(0, 0, 0, 0);
+        const todayStart = new Date(midnightIST.getTime() - IST_OFFSET_MS).toISOString();
+        const todayEnd = new Date(midnightIST.getTime() + 24 * 60 * 60 * 1000 - IST_OFFSET_MS).toISOString();
+
+        const { data: todayBlocks } = await supabase
+          .from('time_blocks')
+          .select('id')
+          .eq('completed', true)
+          .gte('created_at', todayStart)
+          .lt('created_at', todayEnd);
+
+        const pomoCount = todayBlocks?.length ?? 1;
+        const durationMins = Math.round((duration ?? 25 * 60) / 60);
+        const cleanStr = hadNotToDoSelected && distractionCount === 0 ? ' 🏆 _Clean session!_' : '';
+        const xpStr = `+${xpEarned - xpDeducted} XP`;
+
+        // Fetch next pending task
+        const { data: nextTasks } = await supabase
+          .from('tasks')
+          .select('title')
+          .in('status', ['todo', 'in-progress'])
+          .is('parent_task_id', null)
+          .order('priority', { ascending: false })
+          .limit(2);
+
+        const nextTask = nextTasks?.find((t: { title: string }) => t.title !== taskTitle);
+        const nextStr = nextTask
+          ? `\n\nNext up → *${nextTask.title}*. Starting now or taking a break?`
+          : `\n\n_No more tasks queued. Take a breath._`;
+
+        const msg = [
+          `🍅 *Session complete* — ${durationMins} min${taskTitle ? ` on "${taskTitle}"` : ''}`,
+          `That's *${pomoCount} session${pomoCount !== 1 ? 's' : ''}* today. ${xpStr}${cleanStr}`,
+          nextStr,
+        ].join('\n');
+
+        notifyTelegram(msg);
+      } catch (err) {
+        console.error('[Timer] Telegram notification failed:', err);
+      }
     });
 
     // Force the tasks list to re-fetch so the Pomodoro count updates instantly
