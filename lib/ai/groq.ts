@@ -1,4 +1,6 @@
 import Groq from 'groq-sdk';
+import fs from 'fs';
+import path from 'path';
 
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 
@@ -12,6 +14,16 @@ export interface ExecutionSummary {
   goalDeadlinesSummary: string;
   failedHabitsSummary: string;
   distractionsSummary?: string;
+}
+
+// ── Read User Context ──────────────────────────────────────────────────────────
+function getUserContext(): string {
+  try {
+    const contextPath = path.join(process.cwd(), 'user_context.md');
+    return fs.readFileSync(contextPath, 'utf-8');
+  } catch (e) {
+    return '';
+  }
 }
 
 // ─── Audio Transcription ──────────────────────────────────────────────────────
@@ -68,6 +80,9 @@ You are analyzing this user's journal entries alongside their hard execution dat
 You don't coach. You don't motivate. You don't comfort. You tell them what you see—plainly, directly, and with the calm weight of someone who has no reason to lie.
 
 ${statsContext}
+
+USER CONTEXT:
+${getUserContext()}
 
 BACKGROUND CONTEXT:
 - Journal entries: ${stats?.total_entries ?? 0} | Streak: ${stats?.streak_days ?? 0} days 

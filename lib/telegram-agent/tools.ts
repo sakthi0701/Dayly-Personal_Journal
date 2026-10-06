@@ -7,11 +7,11 @@
  */
 
 export type ToolName =
-  | 'log_habit'
-  | 'complete_task'
-  | 'complete_pressure_task'
-  | 'add_task'
-  | 'add_pressure_task'
+  | 'log_habits'
+  | 'complete_tasks'
+  | 'complete_pressure_tasks'
+  | 'add_tasks'
+  | 'add_pressure_tasks'
   | 'log_journal'
   | 'get_stats'
   | 'set_reminder'
@@ -22,113 +22,158 @@ export const AGENT_TOOLS = [
   {
     type: 'function' as const,
     function: {
-      name: 'log_habit' as ToolName,
+      name: 'log_habits' as ToolName,
       description:
-        'Mark a habit as done, failed, or skipped. Use when user says they completed, skipped, or failed a habit. ' +
+        'Mark one or more habits as done, failed, or skipped. Use when user says they completed, skipped, or failed habits. ' +
         'Examples: "done with meditation", "skipping exercise today", "couldn\'t meditate".',
       parameters: {
         type: 'object',
         properties: {
-          habit_name: {
-            type: 'string',
-            description: 'Name or partial name of the habit as the user said it.',
-          },
-          status: {
-            type: 'string',
-            enum: ['success', 'failed', 'skipped'],
-            description: 'success = completed, failed = tried but couldn\'t, skipped = intentionally not doing it today.',
+          habits: {
+            type: 'array',
+            items: {
+              type: 'object',
+              properties: {
+                habit_name: {
+                  type: 'string',
+                  description: 'Name or partial name of the habit as the user said it.',
+                },
+                status: {
+                  type: 'string',
+                  enum: ['success', 'failed', 'skipped'],
+                  description: 'success = completed, failed = tried but couldn\'t, skipped = intentionally not doing it today.',
+                },
+              },
+              required: ['habit_name', 'status'],
+            },
           },
         },
-        required: ['habit_name', 'status'],
+        required: ['habits'],
       },
     },
   },
   {
     type: 'function' as const,
     function: {
-      name: 'complete_task' as ToolName,
+      name: 'complete_tasks' as ToolName,
       description:
-        'Mark a regular task as done. Use when user says they finished, completed, or done with a task from their task list. ' +
+        'Mark one or more regular tasks as done. Use when user says they finished, completed, or done with tasks from their task list. ' +
         'Examples: "finished writing the report", "done with the API task", "completed auth flow".',
       parameters: {
         type: 'object',
         properties: {
-          task_name: {
-            type: 'string',
-            description: 'Name or partial name of the task as the user described it.',
+          tasks: {
+            type: 'array',
+            items: {
+              type: 'object',
+              properties: {
+                task_name: {
+                  type: 'string',
+                  description: 'Name or partial name of the task as the user described it.',
+                },
+              },
+              required: ['task_name'],
+            },
           },
         },
-        required: ['task_name'],
+        required: ['tasks'],
       },
     },
   },
   {
     type: 'function' as const,
     function: {
-      name: 'complete_pressure_task' as ToolName,
+      name: 'complete_pressure_tasks' as ToolName,
       description:
-        'Mark a pressure plan task as done. Use when the task sounds urgent or deadline-driven. ' +
-        'If unsure whether it\'s a regular task or pressure task, prefer complete_task.',
+        'Mark one or more pressure plan tasks as done. Use when the task sounds urgent or deadline-driven. ' +
+        'If unsure whether it\'s a regular task or pressure task, prefer complete_tasks.',
       parameters: {
         type: 'object',
         properties: {
-          task_name: {
-            type: 'string',
-            description: 'Name or partial name of the pressure task.',
+          tasks: {
+            type: 'array',
+            items: {
+              type: 'object',
+              properties: {
+                task_name: {
+                  type: 'string',
+                  description: 'Name or partial name of the pressure task.',
+                },
+              },
+              required: ['task_name'],
+            },
           },
         },
-        required: ['task_name'],
+        required: ['tasks'],
       },
     },
   },
   {
     type: 'function' as const,
     function: {
-      name: 'add_task' as ToolName,
+      name: 'add_tasks' as ToolName,
       description:
-        'Create a new task. Use when user wants to add something to their task list. ' +
-        'Examples: "add task: write unit tests", "remind me to call doctor", "new task: review PR".',
+        'Create one or more new tasks. Use when user wants to add something to their task list. ' +
+        'Examples: "add tasks: write unit tests, fix bugs", "remind me to call doctor", "new task: review PR".',
       parameters: {
         type: 'object',
         properties: {
-          title: { type: 'string', description: 'Task title.' },
-          due_date: {
-            type: 'string',
-            description: 'ISO date YYYY-MM-DD. Only set if user explicitly mentions a date.',
-          },
-          priority: {
-            type: 'string',
-            enum: ['urgent', 'high', 'medium', 'low', 'none'],
-            description: 'Task priority. Default to "none" unless user specifies urgency.',
+          tasks: {
+            type: 'array',
+            items: {
+              type: 'object',
+              properties: {
+                title: { type: 'string', description: 'Task title.' },
+                due_date: {
+                  type: 'string',
+                  description: 'ISO date YYYY-MM-DD. Only set if user explicitly mentions a date.',
+                },
+                priority: {
+                  type: 'string',
+                  enum: ['urgent', 'high', 'medium', 'low', 'none'],
+                  description: 'Task priority. Default to "none" unless user specifies urgency.',
+                },
+              },
+              required: ['title'],
+            },
           },
         },
-        required: ['title'],
+        required: ['tasks'],
       },
     },
   },
   {
     type: 'function' as const,
     function: {
-      name: 'add_pressure_task' as ToolName,
+      name: 'add_pressure_tasks' as ToolName,
       description:
-        'Create an urgent/deadline-driven pressure task. Use when user mentions urgency, deadlines, or it sounds like a high-stakes item. ' +
+        'Create one or more urgent/deadline-driven pressure tasks. Use when user mentions urgency, deadlines, or it sounds like a high-stakes item. ' +
         'Examples: "urgent: submit report by 3pm", "pressure task: client demo tomorrow".',
       parameters: {
         type: 'object',
         properties: {
-          title: { type: 'string', description: 'Pressure task title.' },
-          deadline: {
-            type: 'string',
-            description:
-              'ISO datetime. Date only (YYYY-MM-DD) if no time specified. ' +
-              'With time: YYYY-MM-DDTHH:MM:00. Use IST time as-is.',
-          },
-          priority: {
-            type: 'number',
-            description: '1=critical, 2=high, 3=medium. Default 2.',
+          tasks: {
+            type: 'array',
+            items: {
+              type: 'object',
+              properties: {
+                title: { type: 'string', description: 'Pressure task title.' },
+                deadline: {
+                  type: 'string',
+                  description:
+                    'ISO datetime. Date only (YYYY-MM-DD) if no time specified. ' +
+                    'With time: YYYY-MM-DDTHH:MM:00. Use IST time as-is.',
+                },
+                priority: {
+                  type: 'number',
+                  description: '1=critical, 2=high, 3=medium. Default 2.',
+                },
+              },
+              required: ['title'],
+            },
           },
         },
-        required: ['title'],
+        required: ['tasks'],
       },
     },
   },

@@ -254,6 +254,61 @@ async function execAddPressureTask(args: { title: string; deadline?: string; pri
   };
 }
 
+async function execLogHabits(args: { habits: Array<{ habit_name: string; status: 'success' | 'failed' | 'skipped' }> }) {
+  const summaries: string[] = [];
+  const results = [];
+  for (const h of args.habits) {
+    const res = await execLogHabit(h);
+    summaries.push(res.summary);
+    results.push(res);
+  }
+  return { results, summary: summaries.join(' | ') };
+}
+
+async function execCompleteTasks(args: { tasks: Array<{ task_name: string }> }) {
+  const summaries: string[] = [];
+  const results = [];
+  for (const t of args.tasks) {
+    const res = await execCompleteTask(t);
+    summaries.push(res.summary);
+    results.push(res);
+  }
+  return { results, summary: summaries.join(' | ') };
+}
+
+async function execCompletePressureTasks(args: { tasks: Array<{ task_name: string }> }) {
+  const summaries: string[] = [];
+  const results = [];
+  for (const t of args.tasks) {
+    const res = await execCompletePressureTask(t);
+    summaries.push(res.summary);
+    results.push(res);
+  }
+  return { results, summary: summaries.join(' | ') };
+}
+
+async function execAddTasks(args: { tasks: Array<{ title: string; due_date?: string; priority?: string }> }) {
+  const summaries: string[] = [];
+  const results = [];
+  for (const t of args.tasks) {
+    const res = await execAddTask(t);
+    summaries.push(res.summary);
+    results.push(res);
+  }
+  return { results, summary: summaries.join(' | ') };
+}
+
+async function execAddPressureTasks(args: { tasks: Array<{ title: string; deadline?: string; priority?: number }> }) {
+  const summaries: string[] = [];
+  const results = [];
+  for (const t of args.tasks) {
+    const res = await execAddPressureTask(t);
+    summaries.push(res.summary);
+    results.push(res);
+  }
+  return { results, summary: summaries.join(' | ') };
+}
+
 async function execGetStats(): Promise<ToolResult['data'] & { summary: string }> {
   const stats = await getUserStats();
   if (!stats) return { summary: 'Could not fetch stats.' };
@@ -388,20 +443,20 @@ export async function executeTools(toolCalls: ToolCall[]): Promise<ToolResult[]>
       let data: ToolResult['data'] & { summary: string };
 
       switch (name) {
-        case 'log_habit':
-          data = await execLogHabit(args as Parameters<typeof execLogHabit>[0]);
+        case 'log_habits':
+          data = await execLogHabits(args as Parameters<typeof execLogHabits>[0]);
           break;
-        case 'complete_task':
-          data = await execCompleteTask(args as Parameters<typeof execCompleteTask>[0]);
+        case 'complete_tasks':
+          data = await execCompleteTasks(args as Parameters<typeof execCompleteTasks>[0]);
           break;
-        case 'complete_pressure_task':
-          data = await execCompletePressureTask(args as Parameters<typeof execCompletePressureTask>[0]);
+        case 'complete_pressure_tasks':
+          data = await execCompletePressureTasks(args as Parameters<typeof execCompletePressureTasks>[0]);
           break;
-        case 'add_task':
-          data = await execAddTask(args as Parameters<typeof execAddTask>[0]);
+        case 'add_tasks':
+          data = await execAddTasks(args as Parameters<typeof execAddTasks>[0]);
           break;
-        case 'add_pressure_task':
-          data = await execAddPressureTask(args as Parameters<typeof execAddPressureTask>[0]);
+        case 'add_pressure_tasks':
+          data = await execAddPressureTasks(args as Parameters<typeof execAddPressureTasks>[0]);
           break;
         case 'log_journal':
           // Journal content is returned to pipeline.ts which handles the Mem0 + embedding flow
@@ -455,7 +510,7 @@ export async function buildActiveSnapshot(): Promise<ActiveSnapshot> {
   const today = getISTDateString();
 
   const [habitsRes, logsRes, tasksRes, pressureRes] = await Promise.all([
-    supabase.from('habits').select('id, name, icon').limit(10),
+    supabase.from('habits').select('id, name, icon, habit_type').limit(20),
     supabase.from('habit_logs').select('habit_id, status').gte('logged_at', start).lt('logged_at', end),
     supabase.from('tasks').select('title, priority, status').in('status', ['todo', 'in-progress']).is('parent_task_id', null).order('priority', { ascending: false }).limit(5),
     supabase.from('pressure_tasks').select('title, priority, deadline, status').in('status', ['todo', 'snoozed']).order('priority', { ascending: true }).limit(5),
@@ -464,8 +519,10 @@ export async function buildActiveSnapshot(): Promise<ActiveSnapshot> {
   const doneToday = new Set((logsRes.data ?? []).filter((l) => l.status === 'success').map((l) => l.habit_id));
   const habits = habitsRes.data ?? [];
 
-  const habitsCompleted = habits.filter((h) => doneToday.has(h.id)).map((h) => `${h.icon ?? '✨'} ${h.name}`);
-  const habitsRemaining = habits.filter((h) => !doneToday.has(h.id)).map((h) => `${h.icon ?? '✨'} ${h.name}`);
+  const formatHabit = (h: any) => `${h.habit_type === 'bad' ? '[BAD]' : '[GOOD]'} ${h.icon ?? '✨'} ${h.name}`;
+
+  const habitsCompleted = habits.filter((h) => doneToday.has(h.id)).map(formatHabit);
+  const habitsRemaining = habits.filter((h) => !doneToday.has(h.id)).map(formatHabit);
 
   const topTasks = (tasksRes.data ?? []).map((t) => `"${t.title}" (${t.status})`);
   const topPressure = (pressureRes.data ?? []).map((t) => {

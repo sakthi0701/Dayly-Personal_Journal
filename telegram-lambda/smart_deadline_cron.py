@@ -156,8 +156,9 @@ def get_current_slot(now_ist: datetime):
 
     is_morning = slot_start.hour == MORNING_SLOT_HOUR
     is_evening = slot_start.hour == EVENING_SLOT_HOUR
+    is_3_hourly = slot_start.hour % 3 == 0 and slot_start.minute == 0
 
-    return slot_start, slot_end, is_morning, is_evening
+    return slot_start, slot_end, is_morning, is_evening, is_3_hourly
 
 
 def deadline_in_slot(deadline_dt: datetime, slot_start: datetime, slot_end: datetime) -> bool:
@@ -191,11 +192,11 @@ def lambda_handler(event, context):
 
     now_ist = datetime.now(IST)
     today_str = now_ist.strftime("%Y-%m-%d")
-    slot_start, slot_end, is_morning, is_evening = get_current_slot(now_ist)
+    slot_start, slot_end, is_morning, is_evening, is_3_hourly = get_current_slot(now_ist)
 
     print(f"[Cron] {now_ist.strftime('%Y-%m-%d %H:%M IST')} | "
           f"Slot {slot_start.strftime('%H:%M')}–{slot_end.strftime('%H:%M')} | "
-          f"Morning={is_morning} Evening={is_evening}")
+          f"Morning={is_morning} Evening={is_evening} 3-Hourly={is_3_hourly}")
 
     messages_sent = 0
 
@@ -371,6 +372,19 @@ def lambda_handler(event, context):
         messages_sent += 1
         print(f"[Cron] Time-specific alert sent: {len(time_specific_due)} task(s)")
 
+    # ── 3.5. 3-HOURLY CHECK-IN ──────────────────────────────────────────────────
+    if is_3_hourly and not is_morning and not is_evening:
+        # Don't send during sleep hours (e.g. 12 AM, 3 AM)
+        if slot_start.hour >= 9 and slot_start.hour <= 21:
+            checkin_msg = (
+                f"🤖 *Sensei Check-in — {now_ist.strftime('%H:%M IST')}*\n\n"
+                "What have you been doing for the last 3 hours? "
+                "Log it now or I'll assume you were scrolling. 🧐"
+            )
+            send_telegram(BOT_TOKEN, CHAT_ID, checkin_msg)
+            messages_sent += 1
+            print(f"[Cron] 3-hourly check-in sent at {slot_start.strftime('%H:%M')}")
+
     # ── 4. DYNAMIC REMINDERS (from telegram_reminders table) ──────────────────
     # The AI agent creates these on request ("remind me at 3pm to take medicine")
     # We check for any reminders whose remind_at falls in the current 30-min slot.
@@ -452,6 +466,7 @@ def lambda_handler(event, context):
             "slot": slot_start.strftime("%H:%M IST"),
             "morning": is_morning,
             "evening": is_evening,
+            "3_hourly": is_3_hourly,
             "messages_sent": messages_sent,
             "time_specific_alerts": len(time_specific_due) if 'time_specific_due' in dir() else 0,
         }),

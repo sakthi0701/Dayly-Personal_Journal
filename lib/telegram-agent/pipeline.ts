@@ -14,6 +14,8 @@
  */
 
 import Groq from 'groq-sdk';
+import fs from 'fs';
+import path from 'path';
 import { supabase } from '@/lib/supabase';
 import { generateGoDeeperQuestion } from '@/lib/ai/groq';
 import { mem0 } from '@/lib/ai/memory';
@@ -36,6 +38,16 @@ export interface PipelineResult {
   response: string;
   toolResults: ToolResult[];
   journalEntryId?: string; // set if log_journal was called — used for background embedding
+}
+
+// ── Read User Context ──────────────────────────────────────────────────────────
+function getUserContext(): string {
+  try {
+    const contextPath = path.join(process.cwd(), 'user_context.md');
+    return fs.readFileSync(contextPath, 'utf-8');
+  } catch (e) {
+    return '';
+  }
 }
 
 // ── System prompts ─────────────────────────────────────────────────────────────
@@ -61,13 +73,16 @@ Habits today → ${habitsDone} | ${habitsLeft}
 Top tasks → ${snapshot.topTasks.length > 0 ? snapshot.topTasks.join(' | ') : 'No active tasks'}
 Pressure tasks → ${snapshot.topPressure.length > 0 ? snapshot.topPressure.join(' | ') : 'None'}
 
+USER CONTEXT:
+${getUserContext()}
+
 ROUTING RULES:
-• "done X" / "finished X" / "completed X" (habit name) → log_habit(status: success)
-• "skipping X" / "won't do X today" → log_habit(status: skipped)
-• "failed X" / "couldn't do X" → log_habit(status: failed)
-• "done with [task]" / "finished [project]" → complete_task or complete_pressure_task
-• "add task" / "new task" / "remind me to" → add_task
-• "urgent" / "deadline" / "pressure task" → add_pressure_task
+• "done X" / "finished X" / "completed X" (habit name) → log_habits(status: success)
+• "skipping X" / "won't do X today" → log_habits(status: skipped)
+• "failed X" / "couldn't do X" → log_habits(status: failed)
+• "done with [task]" / "finished [project]" → complete_tasks or complete_pressure_tasks
+• "add task" / "new task" / "remind me to" → add_tasks
+• "urgent" / "deadline" / "pressure task" → add_pressure_tasks
 • Reflection / feelings / life update / what happened → log_journal
 • "stats" / "my level" / "how am I doing" → get_stats
 • "remind me at X" / "set reminder" → set_reminder
@@ -97,14 +112,17 @@ ${habitsLeft > 0 ? `Habits remaining today: ${snapshot.habitsRemaining.join(', '
 ${nextTask ? `Next task: ${nextTask}` : 'No pending tasks'}
 ${nextPressure ? `Top pressure task: ${nextPressure}` : ''}
 
+USER CONTEXT:
+${getUserContext()}
+
 YOUR RULES:
 1. Max 3 sentences total. Be brief.
 2. No generic praise. If something good happened, name it specifically, then immediately push forward.
-3. If a habit was logged → brief specific reaction + ask about the next pending habit or task BY NAME.
-4. If a task was completed → acknowledge specifically + name what's next.
-5. If journal was logged → your response will have a Sensei question appended automatically. Just output a short 1-sentence acknowledgment.
-6. If nothing was actioned (pure chat) → engage directly, nudge toward the most pressing pending item.
-7. If all habits are done → celebrate briefly (one sentence), then point at tasks.
+3. Balance your focus. Do not only ask about habits. If there are pending Pressure Tasks, prioritize pointing those out immediately. If not, point to normal tasks or habits.
+4. If a habit was logged → brief specific reaction + ask about the next pending Pressure Task, normal Task, or Habit BY NAME. Note whether a habit is [GOOD] or [BAD] when responding to it.
+5. If a task/pressure task was completed → acknowledge specifically + name what's next.
+6. If journal was logged → your response will have a Sensei question appended automatically. Just output a short 1-sentence acknowledgment.
+7. If nothing was actioned (pure chat) → engage directly, nudge toward the most pressing pending item (prioritizing pressure tasks).
 8. Use Telegram Markdown: *bold*, _italic_. No headers. No bullet points in your response.
 9. Never use "Great job!", "Awesome!", or generic filler words.
 10. End with a question or a direct push toward the next action.`;
