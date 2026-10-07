@@ -48,6 +48,14 @@ const nextConfig: NextConfig = {
     'mysql2',
     '@mochow/mochow-sdk-node'
   ],
+  webpack: (config, { webpack }) => {
+    config.plugins.push(
+      new webpack.IgnorePlugin({
+        resourceRegExp: /^(zeroentropy|weaviate-client|chromadb|mongodb|cassandra-driver|@pinecone-database\/pinecone|@aws-sdk\/client-s3vectors|@turbopuffer\/turbopuffer|@upstash\/vector|@elastic\/elasticsearch|@opensearch-project\/opensearch|cohere-ai|fastembed|@google-cloud\/aiplatform|@huggingface\/transformers|iovalkey|oracledb|pg|natural|@aws-sdk\/client-bedrock-runtime|@aws-sdk\/client-neptune-graph|@databricks\/sql|@zilliz\/milvus2-sdk-node|mysql2|@mochow\/mochow-sdk-node)$/
+      })
+    );
+    return config;
+  },
 };
 
 export default nextConfig;
