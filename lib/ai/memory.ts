@@ -74,5 +74,5 @@ export const mem0 = new Memory({
             supabaseKey: supabaseKey,
         }
     }
-});
+} as any);
 

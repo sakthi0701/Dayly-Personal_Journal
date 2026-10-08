@@ -20,7 +20,7 @@ export async function POST(req: Request) {
         try {
             const searchResults = await mem0.search(
                 content || 'general reflections on life',
-                { userId: 'default_user', limit: 12 }
+                { userId: 'default_user', limit: 12 } as any
             );
             if (searchResults?.results?.length > 0) {
                 semanticEntries = searchResults.results

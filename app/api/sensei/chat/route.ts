@@ -82,7 +82,7 @@ export async function POST(request: Request) {
       habitLogsRes,
       sessionReviewsRes,
     ] = await Promise.all([
-      mem0.search(message, { userId: 'default_user', limit: 6 }).catch(() => null),
+      mem0.search(message, { userId: 'default_user', limit: 6 } as any).catch(() => null),
       getUserStats(),
 
       supabase

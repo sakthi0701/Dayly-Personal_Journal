@@ -123,7 +123,7 @@ export async function POST(request: Request) {
     // Fall back to querying recent raw entries from Supabase if mem0 returns nothing.
     let datedContext: { content: string; date: string }[] = [];
     try {
-      const searchResults = await mem0.search(cleanMessage, { userId: 'default_user', limit: 15 });
+      const searchResults = await mem0.search(cleanMessage, { userId: 'default_user', limit: 15 } as any);
       if (searchResults?.results && searchResults.results.length > 0) {
         datedContext = searchResults.results.map((res) => ({
           content: res.memory,

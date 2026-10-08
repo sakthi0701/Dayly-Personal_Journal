@@ -1,4 +1,3 @@
-
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
@@ -7,8 +6,6 @@ const nextConfig: NextConfig = {
     NEXT_PUBLIC_SUPABASE_URL: process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || '',
     NEXT_PUBLIC_SUPABASE_ANON_KEY: process.env.SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '',
   },
-  /* config options here */
-  // Removed webpack config to avoid conflict with Next.js 16 Turbopack default
   serverExternalPackages: [
     'sqlite3',
     '@langchain/core',
@@ -22,39 +19,36 @@ const nextConfig: NextConfig = {
     '@azure/identity',
     '@google/genai',
     '@anthropic-ai/sdk',
-    'zeroentropy',
-    'weaviate-client',
-    'chromadb',
-    'mongodb',
-    'cassandra-driver',
-    '@pinecone-database/pinecone',
-    '@aws-sdk/client-s3vectors',
-    '@turbopuffer/turbopuffer',
-    '@upstash/vector',
-    '@elastic/elasticsearch',
-    '@opensearch-project/opensearch',
-    'cohere-ai',
-    'fastembed',
-    '@google-cloud/aiplatform',
-    '@huggingface/transformers',
-    'iovalkey',
-    'oracledb',
-    'pg',
-    'natural',
-    '@aws-sdk/client-bedrock-runtime',
-    '@aws-sdk/client-neptune-graph',
-    '@databricks/sql',
-    '@zilliz/milvus2-sdk-node',
-    'mysql2',
-    '@mochow/mochow-sdk-node'
   ],
-  webpack: (config, { webpack }) => {
-    config.plugins.push(
-      new webpack.IgnorePlugin({
-        resourceRegExp: /^(zeroentropy|weaviate-client|chromadb|mongodb|cassandra-driver|@pinecone-database\/pinecone|@aws-sdk\/client-s3vectors|@turbopuffer\/turbopuffer|@upstash\/vector|@elastic\/elasticsearch|@opensearch-project\/opensearch|cohere-ai|fastembed|@google-cloud\/aiplatform|@huggingface\/transformers|iovalkey|oracledb|pg|natural|@aws-sdk\/client-bedrock-runtime|@aws-sdk\/client-neptune-graph|@databricks\/sql|@zilliz\/milvus2-sdk-node|mysql2|@mochow\/mochow-sdk-node)$/
-      })
-    );
-    return config;
+  turbopack: {
+    resolveAlias: {
+      'better-sqlite3': './lib/empty-module.js',
+      'cassandra-driver': './lib/empty-module.js',
+      'chromadb': './lib/empty-module.js',
+      'cohere-ai': './lib/empty-module.js',
+      'fastembed': './lib/empty-module.js',
+      'iovalkey': './lib/empty-module.js',
+      'mongodb': './lib/empty-module.js',
+      'mysql2/promise': './lib/empty-module.js',
+      'mysql2': './lib/empty-module.js',
+      'oracledb': './lib/empty-module.js',
+      'pg': './lib/empty-module.js',
+      'weaviate-client': './lib/empty-module.js',
+      'zeroentropy': './lib/empty-module.js',
+      '@pinecone-database/pinecone': './lib/empty-module.js',
+      '@aws-sdk/client-s3vectors': './lib/empty-module.js',
+      '@turbopuffer/turbopuffer': './lib/empty-module.js',
+      '@upstash/vector': './lib/empty-module.js',
+      '@elastic/elasticsearch': './lib/empty-module.js',
+      '@opensearch-project/opensearch': './lib/empty-module.js',
+      '@google-cloud/aiplatform': './lib/empty-module.js',
+      '@huggingface/transformers': './lib/empty-module.js',
+      '@aws-sdk/client-bedrock-runtime': './lib/empty-module.js',
+      '@aws-sdk/client-neptune-graph': './lib/empty-module.js',
+      '@databricks/sql': './lib/empty-module.js',
+      '@zilliz/milvus2-sdk-node': './lib/empty-module.js',
+      '@mochow/mochow-sdk-node': './lib/empty-module.js',
+    },
   },
 };
 

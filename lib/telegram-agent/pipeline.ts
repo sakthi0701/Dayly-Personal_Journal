@@ -179,7 +179,7 @@ async function processJournal(content: string): Promise<{ entryId: string; goDee
   // Fetch Mem0 context for Go Deeper question
   let datedContext: { content: string; date: string }[] = [];
   try {
-    const searchResults = await mem0.search(content, { userId: 'default_user', limit: 15 });
+    const searchResults = await mem0.search(content, { userId: 'default_user', limit: 15 } as any);
     if (searchResults?.results?.length > 0) {
       datedContext = searchResults.results.map((res: { memory: string; createdAt?: string }) => ({
         content: res.memory,

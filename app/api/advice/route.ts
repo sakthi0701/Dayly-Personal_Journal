@@ -44,7 +44,7 @@ export async function POST(req: Request) {
       habitLogsRes,
       sessionReviewsRes,
     ] = await Promise.all([
-      mem0.search(query, { userId: 'default_user', limit: 10 }),
+      mem0.search(query, { userId: 'default_user', limit: 10 } as any),
       getUserStats(),
 
       // Pomodoro planned vs completed (tasks updated in last 7 days)
