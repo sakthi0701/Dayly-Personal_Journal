@@ -49,6 +49,7 @@ export default function SessionReviewSheet({
 
   const startTimer = useTimer(state => state.startTimer);
   const setDuration = useTimer(state => state.setDuration);
+  const startBreak = useTimer(state => state.startBreak);
   const task = useTimer(state => state.task);
   const strictMode = useTimer(state => state.strictMode);
   const abandonTimer = useTimer(state => state.abandonTimer);
@@ -89,8 +90,7 @@ export default function SessionReviewSheet({
             <div className="flex flex-col gap-2.5">
               <button
                 onClick={() => {
-                  setDuration(5);
-                  startTimer(null, false, [], true);
+                  startBreak(5);
                 }}
                 className="w-full py-3 bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-semibold rounded-xl transition-all flex items-center justify-center gap-2 shadow-lg shadow-emerald-600/20"
               >
@@ -99,7 +99,7 @@ export default function SessionReviewSheet({
               <button
                 onClick={() => {
                   setDuration(25);
-                  startTimer(task, strictMode, notToDoItems, false);
+                  startTimer(task, strictMode, notToDoItems);
                 }}
                 className="w-full py-3 bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-semibold rounded-xl transition-all flex items-center justify-center gap-2 shadow-lg shadow-indigo-600/20"
               >
@@ -172,8 +172,7 @@ export default function SessionReviewSheet({
           <div className="flex flex-col gap-2.5">
             <button
               onClick={() => {
-                setDuration(5);
-                startTimer(null, false, [], true);
+                startBreak(5);
               }}
               className="w-full py-3 bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-semibold rounded-xl transition-all flex items-center justify-center gap-2 shadow-lg shadow-emerald-600/20"
             >
@@ -182,7 +181,7 @@ export default function SessionReviewSheet({
             <button
               onClick={() => {
                 setDuration(25);
-                startTimer(task, strictMode, notToDoItems, false);
+                startTimer(task, strictMode, notToDoItems);
               }}
               className="w-full py-3 bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-semibold rounded-xl transition-all flex items-center justify-center gap-2 shadow-lg shadow-indigo-600/20"
             >

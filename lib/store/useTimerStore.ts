@@ -37,6 +37,7 @@ export interface TimerState {
   notToDoItems: NotToDoItem[];
   isBreak: boolean;
   loggedDistractions: LoggedDistraction[];
+  breakReminderId: string | null; // telegram_reminders row that pings Telegram when the break ends
 }
 
 export interface TimerStore extends TimerState {
@@ -45,7 +46,8 @@ export interface TimerStore extends TimerState {
 
   // Actions
   init: () => void;
-  startTimer: (task: TimerTask | null, strictMode?: boolean, notToDoItems?: NotToDoItem[], isBreak?: boolean) => Promise<void>;
+  startTimer: (task: TimerTask | null, strictMode?: boolean, notToDoItems?: NotToDoItem[]) => Promise<void>;
+  startBreak: (minutes: number) => void;
   pauseTimer: () => void;
   resumeTimer: () => void;
   completeTimer: (reviewData?: { triggeredDistractions: NotToDoItem[]; completionNote?: string }) => Promise<{ xpEarned: number; xpDeducted: number; cleanSession: boolean } | null>;
@@ -62,6 +64,70 @@ export interface TimerStore extends TimerState {
 
 const POMODORO_DURATION = 25 * 60;
 const LS_KEY = 'dayly_timer_v1';
+const BREAK_NOTIFICATION_ID = 7001;
+
+// ─── Break-end alerts ────────────────────────────────────────────────────────
+// Breaks are client-only (no time_blocks row), but the "break over" alert must
+// arrive even if the tab is closed or the Android app is asleep. So the alert is
+// scheduled up-front: a native notification at the end time, plus a
+// telegram_reminders row that the per-minute pg_cron job delivers.
+// Kept in sync on every state change: running break → (re)schedule at now+remaining;
+// completed break → leave it to fire; ended early / paused → cancel.
+
+async function scheduleNativeBreakEnd(endsAt: Date | null): Promise<void> {
+  const { Capacitor } = await import('@capacitor/core');
+  if (!Capacitor.isNativePlatform()) return;
+  const { LocalNotifications } = await import('@capacitor/local-notifications');
+  await LocalNotifications.cancel({ notifications: [{ id: BREAK_NOTIFICATION_ID }] });
+  if (!endsAt) return;
+  await LocalNotifications.schedule({
+    notifications: [{
+      id: BREAK_NOTIFICATION_ID,
+      title: '☕ Break over',
+      body: 'Time to get back into deep work.',
+      schedule: { at: endsAt, allowWhileIdle: true },
+    }],
+  });
+}
+
+// Serialised so a quick pause → resume can't race the create request
+let breakAlertQueue: Promise<void> = Promise.resolve();
+
+// A break that ran to the end must still ping Telegram even if the user clicks
+// Dismiss / Start Focus on the "Break Over" prompt before the per-minute cron runs —
+// so forget the reminder instead of letting syncBreakAlert cancel it.
+// (Cancelling here silently swallowed every break-over ping in testing. Don't revert.)
+function releaseFinishedBreakAlert(): void {
+  const { isBreak, status, breakReminderId } = useTimerStore.getState();
+  if (isBreak && status === 'completed' && breakReminderId) {
+    useTimerStore.setState({ breakReminderId: null });
+  }
+}
+
+function syncBreakAlert(): void {
+  const { isBreak, status, remaining, task } = useTimerStore.getState();
+  if (isBreak && status === 'completed') return; // due now — let it fire
+
+  const endsAt = isBreak && status === 'running' ? new Date(Date.now() + remaining * 1000) : null;
+
+  breakAlertQueue = breakAlertQueue
+    .then(async () => {
+      await scheduleNativeBreakEnd(endsAt).catch((e) => console.error('[break] native schedule failed', e));
+
+      const id = useTimerStore.getState().breakReminderId;
+      if (!endsAt && !id) return;
+
+      const res = await fetch('/api/timer/break', {
+        method: id ? 'PATCH' : 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id, endsAt: endsAt?.toISOString() ?? null, taskTitle: task?.title ?? null }),
+      });
+      if (!res.ok) throw new Error(`break alert ${res.status}`);
+      const data = await res.json();
+      useTimerStore.setState({ breakReminderId: endsAt ? (id ?? data.id) : null });
+    })
+    .catch((err) => console.error('[break] alert sync failed', err));
+}
 
 export const useTimerStore = create<TimerStore>((set, get) => ({
   status: 'idle',
@@ -75,6 +141,7 @@ export const useTimerStore = create<TimerStore>((set, get) => ({
   notToDoItems: [],
   isBreak: false,
   loggedDistractions: [],
+  breakReminderId: null,
   remaining: POMODORO_DURATION,
   isLoaded: false,
 
@@ -156,6 +223,7 @@ export const useTimerStore = create<TimerStore>((set, get) => ({
           notToDoItems: restoredStatus === 'idle' ? [] : (saved.notToDoItems ?? []),
           isBreak: saved.isBreak ?? false,
           loggedDistractions: restoredStatus === 'idle' ? [] : (saved.loggedDistractions ?? []),
+          breakReminderId: saved.breakReminderId ?? null,
           remaining: restoredStatus === 'idle' ? plannedDuration : remaining,
           isLoaded: true,
         });
@@ -203,7 +271,8 @@ export const useTimerStore = create<TimerStore>((set, get) => ({
     }
   },
 
-  startTimer: async (task, strictMode = false, notToDoItems = [], isBreak = false) => {
+  startTimer: async (task, strictMode = false, notToDoItems = []) => {
+    releaseFinishedBreakAlert();
     try {
       const res = await fetch('/api/timer/start', {
         method: 'POST',
@@ -212,7 +281,6 @@ export const useTimerStore = create<TimerStore>((set, get) => ({
           task_id: task?.id ?? null,
           mode: get().mode,
           strict_mode: strictMode,
-          is_break: isBreak,
         }),
       });
       const data = await res.json();
@@ -229,10 +297,11 @@ export const useTimerStore = create<TimerStore>((set, get) => ({
         strictMode,
         lastTick: Date.now(),
         notToDoItems,
-        isBreak,
+        isBreak: false,
         loggedDistractions: [],
         remaining,
       });
+      syncBreakAlert(); // back to work → cancel any pending break-over ping
     } catch (err) {
       // BUG-2: Network offline at start — timer runs but blockId stays null.
       // Session will not be persisted to DB. We still allow the timer to run
@@ -241,12 +310,36 @@ export const useTimerStore = create<TimerStore>((set, get) => ({
     }
   },
 
+  // Breaks are deliberately NOT sent to /api/timer/start: a break is not focus time,
+  // and its time_blocks row used to stay open forever, faking an "in-progress"
+  // session for stats and the Telegram check-in cron. Keep breaks client-only.
+  startBreak: (minutes) => {
+    const duration = minutes * 60;
+    set({
+      status: 'running',
+      mode: 'pomodoro',
+      elapsed: 0,
+      duration,
+      remaining: duration,
+      blockId: null,
+      strictMode: false,
+      lastTick: Date.now(),
+      notToDoItems: [],
+      isBreak: true,
+      loggedDistractions: [],
+      // task is kept so "Start Focus" after the break resumes the same task
+    });
+    syncBreakAlert();
+  },
+
   pauseTimer: () => {
     set({ status: 'paused' });
+    if (get().isBreak) syncBreakAlert();
   },
 
   resumeTimer: () => {
     set({ status: 'running', lastTick: Date.now() });
+    if (get().isBreak) syncBreakAlert();
   },
 
   completeTimer: async (reviewData) => {
@@ -303,6 +396,7 @@ export const useTimerStore = create<TimerStore>((set, get) => ({
   },
 
   abandonTimer: async (failedReason = 'manual_abandon') => {
+    releaseFinishedBreakAlert();
     const { blockId, elapsed, duration, mode } = get();
 
     const resetDuration = mode === 'pomodoro' ? POMODORO_DURATION : 0;
@@ -319,6 +413,7 @@ export const useTimerStore = create<TimerStore>((set, get) => ({
       loggedDistractions: [],
       remaining: mode === 'pomodoro' ? resetDuration : 0,
     });
+    syncBreakAlert(); // ending a break early cancels its alerts
 
     if (!blockId) return;
     try {
@@ -369,6 +464,7 @@ export const useTimerStore = create<TimerStore>((set, get) => ({
       lastTick: now,
       remaining,
     });
+    if (get().isBreak) syncBreakAlert();
   },
 
   setTask: (task) => {
@@ -415,6 +511,7 @@ if (typeof window !== 'undefined') {
         notToDoItems: state.notToDoItems,
         isBreak: state.isBreak,
         loggedDistractions: state.loggedDistractions,
+        breakReminderId: state.breakReminderId,
         _savedAt: Date.now(),
       };
       localStorage.setItem(LS_KEY, JSON.stringify(stateToSave));

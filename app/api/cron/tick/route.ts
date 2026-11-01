@@ -9,7 +9,8 @@
  *   07:00                         → LLM morning kickoff
  *   09,11,13,15,17,19:00          → LLM accountability check-in (skipped mid-pomodoro)
  *   21:00                         → LLM evening review
- *   every tick                    → pressure tasks due in ~1h, due telegram_reminders
+ *   every tick                    → pressure tasks due in ~1h
+ * telegram_reminders (incl. break-over pings) are delivered per-minute by /api/cron/reminders.
  *
  * Auth: `Authorization: Bearer ${CRON_SECRET}`.
  * Testing: POST /api/cron/tick?dry=1&kind=checkin → returns the message, sends nothing.
@@ -27,8 +28,6 @@ export const maxDuration = 60;
 const SLOT_MS = 30 * 60 * 1000;
 const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
 const CHECKIN_HOURS = [9, 11, 13, 15, 17, 19];
-/** Reminders missed by more than this (e.g. cron was down) are not sent late */
-const REMINDER_GRACE_MS = 2 * 60 * 60 * 1000;
 
 function kindForSlot(istHour: number, istMinute: number): CheckInKind | null {
   if (istMinute !== 0) return null;
@@ -65,38 +64,6 @@ async function deadlineAlert(slotStart: number): Promise<string | null> {
   return `⏰ *Deadline in about an hour*\n\n${lines.join('\n')}\n\nAre you on it right now?`;
 }
 
-// ── Dynamic reminders (created by the agent's set_reminder tool) ─────────────
-
-async function dueReminders(slotEnd: number, now: number): Promise<string[]> {
-  const { data, error } = await supabase
-    .from('telegram_reminders')
-    .select('id, label, message, remind_at, is_recurring, recur_every_minutes')
-    .eq('is_active', true)
-    .lt('remind_at', new Date(slotEnd).toISOString());
-  if (error) console.error('[Cron] Reminder query failed:', error.message);
-
-  const messages: string[] = [];
-  for (const r of data ?? []) {
-    const at = new Date(r.remind_at).getTime();
-    const missed = now - at > REMINDER_GRACE_MS;
-    if (!missed) messages.push(`🔔 *${r.label}*\n\n${r.message}`);
-
-    const interval = (r.recur_every_minutes ?? 0) * 60_000;
-    let update: Record<string, unknown>;
-    if (r.is_recurring && interval > 0) {
-      // Step forward past now so a long outage doesn't leave it permanently in the past
-      let next = at + interval;
-      while (next <= now) next += interval;
-      update = { remind_at: new Date(next).toISOString(), last_sent_at: missed ? undefined : new Date(now).toISOString() };
-    } else {
-      update = { is_active: false, last_sent_at: missed ? undefined : new Date(now).toISOString() };
-    }
-    const { error: upErr } = await supabase.from('telegram_reminders').update(update).eq('id', r.id);
-    if (upErr) console.error(`[Cron] Failed to update reminder ${r.id}:`, upErr.message);
-  }
-  return messages;
-}
-
 // ── Handler ───────────────────────────────────────────────────────────────────
 
 export async function POST(request: Request) {
@@ -111,7 +78,6 @@ export async function POST(request: Request) {
 
   const now = Date.now();
   const slotStart = Math.floor(now / SLOT_MS) * SLOT_MS; // IST is +5:30, so UTC and IST slots align
-  const slotEnd = slotStart + SLOT_MS;
   const ist = new Date(slotStart + IST_OFFSET_MS);
   const kind = forcedKind ?? kindForSlot(ist.getUTCHours(), ist.getUTCMinutes());
   const slotLabel = `${String(ist.getUTCHours()).padStart(2, '0')}:${String(ist.getUTCMinutes()).padStart(2, '0')} IST`;
@@ -131,7 +97,6 @@ export async function POST(request: Request) {
 
     const alert = await deadlineAlert(slotStart);
     if (alert) outgoing.push(alert);
-    if (!dryRun) outgoing.push(...(await dueReminders(slotEnd, now)));
 
     if (!dryRun) {
       for (const text of outgoing) {

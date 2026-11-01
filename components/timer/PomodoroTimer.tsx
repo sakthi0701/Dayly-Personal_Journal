@@ -18,7 +18,8 @@ export default function PomodoroTimer({ onComplete }: PomodoroTimerProps) {
   const duration = useTimer(state => state.duration);
   const status = useTimer(state => state.status);
   const task = useTimer(state => state.task);
-  const state = { mode, duration, status, task };
+  const isBreak = useTimer(state => state.isBreak);
+  const state = { mode, duration, status, task, isBreak };
   const { m, s } = formatTime(remaining);
 
   const radius = 88;
@@ -33,7 +34,7 @@ export default function PomodoroTimer({ onComplete }: PomodoroTimerProps) {
   const statusColor =
     state.status === 'completed' ? '#34d399' :
     state.status === 'paused'    ? '#f59e0b' :
-    state.status === 'running'   ? '#818cf8' :
+    state.status === 'running'   ? (state.isBreak ? '#34d399' : '#818cf8') :
     '#3f3f46';
 
   return (
@@ -68,7 +69,7 @@ export default function PomodoroTimer({ onComplete }: PomodoroTimerProps) {
           </div>
           {state.task && (
             <p className="mt-1 text-xs text-zinc-500 max-w-[140px] text-center truncate">
-              {state.task.title}
+              {state.isBreak ? `Up next: ${state.task.title}` : state.task.title}
             </p>
           )}
         </div>
@@ -76,7 +77,9 @@ export default function PomodoroTimer({ onComplete }: PomodoroTimerProps) {
 
       {/* Mode label */}
       <p className="text-xs font-medium uppercase tracking-widest text-zinc-600">
-        {state.mode === 'pomodoro' ? '🍅 Pomodoro' : '⏱ Stopwatch'}
+        {state.isBreak
+          ? <span className="text-emerald-400">☕ Break</span>
+          : state.mode === 'pomodoro' ? '🍅 Pomodoro' : '⏱ Stopwatch'}
         {state.status === 'paused' && (
           <span className="ml-2 text-amber-500 normal-case tracking-normal">· Paused</span>
         )}
@@ -86,7 +89,7 @@ export default function PomodoroTimer({ onComplete }: PomodoroTimerProps) {
       </p>
 
       {/* Pomodoro progress dots */}
-      {state.task && state.mode === 'pomodoro' && (
+      {state.task && state.mode === 'pomodoro' && !state.isBreak && (
         <div className="flex items-center gap-1.5">
           {Array.from({ length: state.task.estimated_pomodoros }).map((_, i) => (
             <span

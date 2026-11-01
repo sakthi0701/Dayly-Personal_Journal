@@ -177,7 +177,7 @@ export default function PiPTimerContent({ onClose }: PiPTimerContentProps) {
               <button
                 onClick={() => {
                   setDuration(25);
-                  startTimer(state.task, state.strictMode, [], false);
+                  startTimer(state.task, state.strictMode, []);
                 }}
                 className="w-full flex items-center justify-center gap-1.5 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-bold rounded-xl transition-all shadow"
               >

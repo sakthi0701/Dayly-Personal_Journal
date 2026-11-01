@@ -9,7 +9,7 @@ import FlipClock from '@/components/timer/FlipClock';
 import WhiteNoise from '@/components/timer/WhiteNoise';
 import NotToDoSelector from '@/components/focus/NotToDoSelector';
 import SessionReviewSheet from '@/components/focus/SessionReviewSheet';
-import { CheckSquare, ChevronDown, Settings2, Flame, AlertTriangle } from 'lucide-react';
+import { CheckSquare, ChevronDown, Settings2, Flame, AlertTriangle, Coffee } from 'lucide-react';
 
 // ─── Task Picker (extended to surface pressure tasks) ────────────────────────
 
@@ -158,6 +158,33 @@ function TaskPicker({ onSelect }: { onSelect: (task: TimerTask | null) => void }
           </div>
         </div>
       )}
+    </div>
+  );
+}
+
+// ─── Break Picker ─────────────────────────────────────────────────────────────
+
+const BREAK_MINUTES = [5, 10, 15];
+
+function BreakPicker() {
+  const status = useTimer(state => state.status);
+  const startBreak = useTimer(state => state.startBreak);
+  if (status !== 'idle') return null;
+
+  return (
+    <div className="flex items-center gap-1.5 bg-zinc-900 border border-zinc-800 rounded-xl p-1">
+      <Coffee className="w-3.5 h-3.5 text-emerald-500 ml-1.5" />
+      <span className="text-xs text-zinc-500 mr-0.5">Take a break</span>
+      {BREAK_MINUTES.map((min) => (
+        <button
+          key={min}
+          id={`break-${min}m-btn`}
+          onClick={() => startBreak(min)}
+          className="px-2.5 py-1 text-xs rounded-lg font-medium text-zinc-400 hover:text-emerald-300 hover:bg-emerald-500/10 transition-all"
+        >
+          {min}m
+        </button>
+      ))}
     </div>
   );
 }
@@ -345,7 +372,7 @@ export default function FocusPage() {
       setTimeout(() => setShowStrictWarning(false), 3000);
       return;
     }
-    startTimer(state.task, strictMode, selectedNotToDos, false);
+    startTimer(state.task, strictMode, selectedNotToDos);
   };
   const [showStrictWarning, setShowStrictWarning] = useState(false);
 
@@ -417,6 +444,7 @@ export default function FocusPage() {
               onComplete={() => { /* handled globally by GlobalTimerUI */ }}
               onStart={handleStart}
             />
+            <BreakPicker />
           </div>
 
           {/* White noise */}

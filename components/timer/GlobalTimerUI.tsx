@@ -90,7 +90,8 @@ export default function GlobalTimerUI() {
         });
       }
 
-      if (Capacitor.isNativePlatform()) {
+      // Break end is pre-scheduled natively by startBreak (fires even while the app sleeps)
+      if (Capacitor.isNativePlatform() && !state.isBreak) {
         LocalNotifications.schedule({
           notifications: [
             {
@@ -173,7 +174,7 @@ export default function GlobalTimerUI() {
                 <div className="flex flex-col gap-2">
                   <button onClick={() => {
                     setDuration(25);
-                    startTimer(state.task, state.strictMode, [], false);
+                    startTimer(state.task, state.strictMode, []);
                   }} className="px-6 py-3 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl font-bold shadow-lg shadow-indigo-600/20 transition-all">
                     Start Focus (25m)
                   </button>

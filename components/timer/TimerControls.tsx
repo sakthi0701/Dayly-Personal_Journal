@@ -18,6 +18,8 @@ export default function TimerControls({ onFlipClock, onComplete, onStart }: Time
   const resumeTimer = useTimer(state => state.resumeTimer);
   const completeTimer = useTimer(state => state.completeTimer);
   const abandonTimer = useTimer(state => state.abandonTimer);
+  const isBreak = useTimer(state => state.isBreak);
+  const stopLabel = isBreak ? 'End break' : 'Abandon';
   const state = { status, task };
 
   const handleComplete = async () => {
@@ -61,7 +63,7 @@ export default function TimerControls({ onFlipClock, onComplete, onStart }: Time
             onClick={() => abandonTimer()}
             className="flex items-center gap-2 px-4 py-2.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-400 hover:text-red-400 text-sm font-medium rounded-xl transition-all"
           >
-            <Square className="w-4 h-4" /> Abandon
+            <Square className="w-4 h-4" /> {stopLabel}
           </button>
         </>
       )}
@@ -79,12 +81,12 @@ export default function TimerControls({ onFlipClock, onComplete, onStart }: Time
             onClick={() => abandonTimer()}
             className="flex items-center gap-2 px-4 py-2.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-400 hover:text-red-400 text-sm font-medium rounded-xl transition-all"
           >
-            <Square className="w-4 h-4" /> Abandon
+            <Square className="w-4 h-4" /> {stopLabel}
           </button>
         </>
       )}
 
-      {status === 'completed' && (
+      {status === 'completed' && !isBreak && (
         <button
           id="timer-done-btn"
           onClick={handleComplete}
