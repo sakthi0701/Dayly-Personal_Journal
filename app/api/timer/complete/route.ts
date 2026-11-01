@@ -218,8 +218,8 @@ export async function POST(request: Request) {
 
         const nextTask = nextTasks?.find((t: { title: string }) => t.title !== taskTitle);
         const nextStr = nextTask
-          ? `\n\nNext up → *${nextTask.title}*. Starting now or taking a break?`
-          : `\n\n_No more tasks queued. Take a breath._`;
+          ? `\nNext up → *${nextTask.title}*. Starting now or taking a break?`
+          : `\n_No more tasks queued. Take a breath._`;
 
         const msg = [
           `🍅 *Session complete* — ${durationMins} min${taskTitle ? ` on "${taskTitle}"` : ''}`,

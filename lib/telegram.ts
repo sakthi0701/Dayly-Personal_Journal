@@ -4,19 +4,63 @@
  * Zero-dependency Telegram Bot API utility.
  * Uses native `fetch` — no heavy SDK required.
  *
+ * Callers (and the LLM) write light Markdown: *bold*, **bold**, _italic_, `code`,
+ * "- " bullets. It is converted to Telegram HTML before sending.
+ *
  * Usage:
  *   import { sendTelegramMessage } from '@/lib/telegram';
  *   await sendTelegramMessage('Hello *world*!');
  */
 
-export type ParseMode = 'Markdown' | 'MarkdownV2' | 'HTML';
-
 export interface TelegramMessageOptions {
   /** Overrides the default TELEGRAM_CHAT_ID env var */
   chatId?: string;
-  parseMode?: ParseMode;
   /** Set to false to disable link previews */
   disableWebPagePreview?: boolean;
+}
+
+// ── Markdown → Telegram HTML ───────────────────────────────────────────────────
+// Legacy `parse_mode: 'Markdown'` rejects the WHOLE message (HTTP 400) on a single
+// unmatched `_` or `*` — e.g. a task titled "ER_model" or LLM output using **bold**.
+// HTML only needs <, >, & escaped, so we escape first and then convert the few
+// markers we support. Do not switch back to 'Markdown' parse mode.
+
+function escapeHtml(s: string): string {
+  return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+export function markdownToTelegramHtml(md: string): string {
+  // Pull code spans out first so nothing inside them gets formatted
+  const codes: string[] = [];
+  let s = md.replace(/`([^`\n]+)`/g, (_, code: string) => `\u0000${codes.push(code) - 1}\u0000`);
+
+  s = escapeHtml(s);
+  s = s.replace(/^[ \t]*[-*•][ \t]+/gm, '• ');                          // bullets (before * → bold)
+  s = s.replace(/^#{1,6}[ \t]+(.+)$/gm, '<b>$1</b>');                   // stray LLM headers
+  s = s.replace(/\*\*(?!\s)(.+?)\*\*/g, '<b>$1</b>');
+  s = s.replace(/(^|[^\w*])\*(?!\s)([^*\n]+?)\*(?!\w)/g, '$1<b>$2</b>');
+  s = s.replace(/(^|[^\w])_(?!\s)([^_\n]+?)_(?!\w)/g, '$1<i>$2</i>');  // word-bounded: snake_case stays
+  s = s.replace(/\n{3,}/g, '\n\n');                                       // collapse runaway blank lines
+
+  return s.replace(/\u0000(\d+)\u0000/g, (_, i: string) => `<code>${escapeHtml(codes[Number(i)])}</code>`);
+}
+
+function htmlToPlainText(html: string): string {
+  return html
+    .replace(/<[^>]+>/g, '')
+    .replace(/&lt;/g, '<')
+    .replace(/&gt;/g, '>')
+    .replace(/&amp;/g, '&');
+}
+
+// ── Send ───────────────────────────────────────────────────────────────────────
+
+async function postMessage(token: string, payload: Record<string, unknown>): Promise<Response> {
+  return fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
 }
 
 /**
@@ -35,12 +79,11 @@ export async function sendTelegramMessage(
     return false;
   }
 
-  const url = `https://api.telegram.org/bot${token}/sendMessage`;
-
+  const html = markdownToTelegramHtml(text);
   const payload: Record<string, unknown> = {
     chat_id: chatId,
-    text,
-    parse_mode: options.parseMode ?? 'Markdown',
+    text: html,
+    parse_mode: 'HTML',
   };
 
   if (options.disableWebPagePreview) {
@@ -48,11 +91,15 @@ export async function sendTelegramMessage(
   }
 
   try {
-    const res = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload),
-    });
+    let res = await postMessage(token, payload);
+
+    // Formatting rejected (malformed entities) → resend as plain text rather than
+    // dropping the message. Without this a bad LLM reply silently never arrives.
+    if (res.status === 400) {
+      console.warn(`[Telegram] HTML rejected, retrying as plain text: ${await res.text()}`);
+      delete payload.parse_mode;
+      res = await postMessage(token, { ...payload, text: htmlToPlainText(html) });
+    }
 
     if (!res.ok) {
       const body = await res.text();

@@ -33,7 +33,7 @@ export interface ToolResult {
 // ── IST timestamp helper ───────────────────────────────────────────────────────
 
 /** Returns the current IST date string for day-boundary queries */
-function getISTDateString(): string {
+export function getISTDateString(): string {
   return new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Kolkata' }); // YYYY-MM-DD
 }
 
@@ -47,7 +47,7 @@ function istToUtc(istString: string): string {
 }
 
 /** IST window for "today" — returns UTC ISO strings for Supabase range queries */
-function getTodayISTWindow(): { start: string; end: string } {
+export function getTodayISTWindow(): { start: string; end: string } {
   const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
   const nowIST = new Date(Date.now() + IST_OFFSET_MS);
   const midnightIST = new Date(nowIST);

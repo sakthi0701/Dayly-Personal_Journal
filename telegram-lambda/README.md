@@ -1,5 +1,10 @@
 # Dayly Telegram Bot — AWS Lambda Deployment Guide
 
+> **⚠️ Superseded.** Scheduled messages now run from `app/api/cron/tick` (Vercel),
+> triggered every 30 min by Supabase pg_cron — see `supabase/cron_tick.sql`.
+> Disable the `dayly-deadline-cron` EventBridge rule so reminders aren't sent twice.
+> `register_webhook.py` (Part 1) is still current.
+
 > **Free forever.** Lambda free tier = 1 million requests/month + 400,000 GB-seconds compute.
 > Our cron runs once per day = ~30 invocations/month. We use **0.003%** of the free tier.
 
@@ -122,8 +127,8 @@ In your Lambda function → **Configuration** tab → **Environment variables** 
 
 | Key | Value |
 |-----|-------|
-| `TELEGRAM_BOT_TOKEN` | `8633755254:AAHzThpxp04eESMME_Nv0uksULh9Qs6apBQ` |
-| `TELEGRAM_CHAT_ID` | `7946225655` |
+| `TELEGRAM_BOT_TOKEN` | *(your bot token from BotFather)* |
+| `TELEGRAM_CHAT_ID` | *(your numeric chat ID)* |
 | `SUPABASE_URL` | `https://mquhecydbvvkbnlnqjpo.supabase.co` |
 | `SUPABASE_ANON_KEY` | *(your anon key from Supabase dashboard)* |
 

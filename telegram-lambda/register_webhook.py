@@ -18,8 +18,8 @@ import urllib.request
 import os
 
 # ── Config ───────────────────────────────────────────────────────────────────
-# Edit these or set them as environment variables
-BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "8633755254:AAHzThpxp04eESMME_Nv0uksULh9Qs6apBQ")
+# Set TELEGRAM_BOT_TOKEN as an environment variable — never hardcode it here (this file is in git)
+BOT_TOKEN = os.environ["TELEGRAM_BOT_TOKEN"]
 VERCEL_URL = os.environ.get("VERCEL_URL", "https://dayly7.vercel.app")  # Your Vercel app URL
 
 # The webhook endpoint in your Next.js app

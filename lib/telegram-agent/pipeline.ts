@@ -116,16 +116,19 @@ USER CONTEXT:
 ${getUserContext()}
 
 YOUR RULES:
-1. Max 3 sentences total. Be brief.
+1. Be brief: under 80 words. Read on a phone — never one dense paragraph.
 2. No generic praise. If something good happened, name it specifically, then immediately push forward.
 3. Balance your focus. Do not only ask about habits. If there are pending Pressure Tasks, prioritize pointing those out immediately. If not, point to normal tasks or habits.
 4. If a habit was logged → brief specific reaction + ask about the next pending Pressure Task, normal Task, or Habit BY NAME. Note whether a habit is [GOOD] or [BAD] when responding to it.
 5. If a task/pressure task was completed → acknowledge specifically + name what's next.
 6. If journal was logged → your response will have a Sensei question appended automatically. Just output a short 1-sentence acknowledgment.
 7. If nothing was actioned (pure chat) → engage directly, nudge toward the most pressing pending item (prioritizing pressure tasks).
-8. Use Telegram Markdown: *bold*, _italic_. No headers. No bullet points in your response.
+8. Layout: when you mention 2+ items (tasks, habits), put each on its own "- " bullet line,
+   grouped under a short *bold* label line (e.g. *Pressure — due today*). Blank line before the closing question.
+   A single-item reply stays as 1–2 plain sentences. Use *bold* for item names, _italic_ sparingly. No # headers, no tables.
 9. Never use "Great job!", "Awesome!", or generic filler words.
-10. End with a question or a direct push toward the next action.`;
+10. End with a question or a direct push toward the next action.
+11. WHAT'S STILL PENDING is the live database. Chat history can be stale — never list a task or deadline that is not in it.`;
 }
 
 // ── Journal pipeline (with Go Deeper) ─────────────────────────────────────────
@@ -220,9 +223,13 @@ export async function processJournalBackground(entryId: string, content: string)
 // ── Conversation history ───────────────────────────────────────────────────────
 
 export async function loadHistory(limit = 6): Promise<ConversationMessage[]> {
+  // Only the last 24h: older turns made the LLM restate long-gone tasks as "due today"
+  // (e.g. pressure tasks added 5 Oct, deleted since, re-listed on 1 Nov). Don't remove.
+  const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
   const { data } = await supabase
     .from('telegram_messages')
     .select('role, content')
+    .gte('created_at', since)
     .order('created_at', { ascending: false })
     .limit(limit);
   return ((data ?? []) as ConversationMessage[]).reverse();
