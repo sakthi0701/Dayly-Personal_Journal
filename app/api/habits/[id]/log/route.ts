@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
+import { getISTDateString } from '@/lib/telegram-agent/executor';
 
 export async function POST(
   request: Request,
@@ -15,7 +16,10 @@ export async function POST(
       return NextResponse.json({ error: 'Invalid status' }, { status: 400 });
     }
 
-    const today = new Date().toISOString().slice(0, 10);
+    // IST calendar date, not UTC: a UTC date files logs made before 05:30 IST under
+    // the previous day, which the weekly habit penalty would then count as a miss.
+    // Do not revert to toISOString().
+    const today = getISTDateString();
 
     // Upsert so re-logging on the same day updates the status rather than erroring
     const { data: log, error } = await supabase

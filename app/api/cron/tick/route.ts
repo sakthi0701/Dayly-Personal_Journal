@@ -13,7 +13,9 @@
  * telegram_reminders (incl. break-over pings) are delivered per-minute by /api/cron/reminders.
  *
  * Auth: `Authorization: Bearer ${CRON_SECRET}`.
+ *   Mondays (IST), every tick     → settle last week's habit penalties (idempotent)
  * Testing: POST /api/cron/tick?dry=1&kind=checkin → returns the message, sends nothing.
+ *          POST /api/cron/tick?dry=1&settle=1    → previews the habit bill, charges nothing.
  */
 
 import { NextResponse, after } from 'next/server';
@@ -21,6 +23,7 @@ import { supabase } from '@/lib/supabase';
 import { sendTelegramMessage } from '@/lib/telegram';
 import { saveHistory } from '@/lib/telegram-agent/pipeline';
 import { buildAccountabilityContext, generateCheckIn, type CheckInKind } from '@/lib/telegram-agent/checkin';
+import { settleLastHabitWeek } from '@/lib/habitPenalty';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
@@ -64,6 +67,19 @@ async function deadlineAlert(slotStart: number): Promise<string | null> {
   return `⏰ *Deadline in about an hour*\n\n${lines.join('\n')}\n\nAre you on it right now?`;
 }
 
+// ── Weekly habit penalty ──────────────────────────────────────────────────────
+
+async function habitSettlement(dryRun: boolean): Promise<string | null> {
+  const penalties = await settleLastHabitWeek(dryRun);
+  if (penalties.length === 0) return null;
+
+  const lines = penalties.map((p) =>
+    p.shielded ? `- 🛡️ ${p.reason} — Shield absorbed ${-p.amount}` : `- ${p.reason} — *${p.amount}* coins`
+  );
+  const charged = penalties.filter((p) => !p.shielded).reduce((sum, p) => sum + p.amount, 0);
+  return `🪙 *Last week's habit bill*\n\n${lines.join('\n')}\n\nTotal: *${charged}* coins.`;
+}
+
 // ── Handler ───────────────────────────────────────────────────────────────────
 
 export async function POST(request: Request) {
@@ -97,6 +113,12 @@ export async function POST(request: Request) {
 
     const alert = await deadlineAlert(slotStart);
     if (alert) outgoing.push(alert);
+
+    // Every Monday tick (IST) retries settlement; the ledger key makes repeats no-ops
+    if (ist.getUTCDay() === 1 || url.searchParams.get('settle') === '1') {
+      const bill = await habitSettlement(dryRun);
+      if (bill) outgoing.push(bill);
+    }
 
     if (!dryRun) {
       for (const text of outgoing) {

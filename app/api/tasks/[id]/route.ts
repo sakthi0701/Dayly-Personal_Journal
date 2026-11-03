@@ -82,7 +82,7 @@ export async function PATCH(request: Request, context: RouteContext) {
 
     // Handle completion (only on status transition to 'done')
     if (updates.status === 'done' && existingTask?.status !== 'done') {
-      await addXP(20);
+      await addXP(20, `Completed task: ${task?.title ?? existingTask?.title ?? 'task'}`);
 
       // Increment completed_task_count for the linked goal
       const targetGoalId = updates.goal_id !== undefined ? updates.goal_id : existingTask?.goal_id;

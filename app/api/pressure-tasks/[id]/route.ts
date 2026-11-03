@@ -43,9 +43,9 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
         const deadline_ts = new Date(data.deadline).getTime();
         const now = Date.now();
         const isOnTime = now <= deadline_ts;
-        await addXP(isOnTime ? 20 : 8);
+        await addXP(isOnTime ? 20 : 8, `${isOnTime ? 'On-time' : 'Late'} pressure task: ${data.title}`);
       } else {
-        await addXP(8); // Give base XP if no deadline
+        await addXP(8, `Pressure task: ${data.title}`); // Give base XP if no deadline
       }
 
       // Increment completed_task_count for the goal

@@ -62,7 +62,7 @@ export async function POST(request: Request) {
       const diff = newNet - oldNet;
 
       if (diff !== 0) {
-        await addXP(diff);
+        await addXP(diff, 'Focus session review updated');
       }
 
       if (existingReview) {
@@ -148,7 +148,7 @@ export async function POST(request: Request) {
       xpDeducted = 5;
     }
 
-    await addXP(xpEarned - xpDeducted);
+    await addXP(xpEarned - xpDeducted, xpDeducted > 0 ? 'Focus session (distracted)' : 'Focus session');
 
     // ── Save Session Review ──────────────────────────────────────────────────
     // Fetch task title for the review record

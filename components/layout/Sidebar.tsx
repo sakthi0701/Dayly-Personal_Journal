@@ -15,13 +15,16 @@ import {
   Brain,
   Swords,
   Settings,
+  Coins,
 } from 'lucide-react';
 import MiniPlayer from '@/components/timer/MiniPlayer';
+import CoinsPanel from '@/components/gamification/CoinsPanel';
 import { LEVEL_THRESHOLDS } from '@/lib/gamification';
 
 interface UserStats {
   streak_days: number;
   xp: number;
+  coins: number;
   current_avatar_state: string;
 }
 
@@ -55,17 +58,21 @@ export default function Sidebar() {
   const pathname = usePathname();
   const { collapsed, setCollapsed } = useSidebar();
   const [stats, setStats] = useState<UserStats | null>(null);
+  const [coinsOpen, setCoinsOpen] = useState(false);
 
-  useEffect(() => {
+  const loadStats = () => {
     fetch('/api/stats/user')
       .then((r) => r.json())
       .then((data) => {
         if (data?.stats) setStats(data.stats);
       })
       .catch(() => null);
-  }, []);
+  };
+
+  useEffect(loadStats, []);
 
   const xp = stats?.xp ?? 0;
+  const coins = stats?.coins ?? 0;
   const streak = stats?.streak_days ?? 0;
   const { title: level, progress, next } = getLevelInfo(xp);
 
@@ -129,6 +136,18 @@ export default function Sidebar() {
               <span className="text-xs text-zinc-500">{level}</span>
             </div>
 
+            {/* Coins — spendable balance, opens the shop */}
+            <button
+              onClick={() => setCoinsOpen(true)}
+              className="w-full flex items-center justify-between rounded-lg px-2 py-1.5 -mx-2 hover:bg-zinc-800/60 transition-colors"
+            >
+              <span className="flex items-center gap-2 text-xs text-zinc-400">
+                <Coins className="w-4 h-4 text-amber-400" />
+                Coins
+              </span>
+              <span className={`text-xs font-semibold ${coins < 0 ? 'text-rose-400' : 'text-amber-300'}`}>{coins}</span>
+            </button>
+
             {/* XP Bar */}
             <div className="space-y-1">
               <div className="flex justify-between text-xs text-zinc-600">
@@ -152,9 +171,19 @@ export default function Sidebar() {
               <Flame className={`w-4 h-4 ${streak > 0 ? 'text-orange-400' : 'text-zinc-600'}`} />
             </div>
             <span className="text-xs text-zinc-600">{streak}d</span>
+            <button
+              onClick={() => setCoinsOpen(true)}
+              title={`${coins} coins`}
+              className="flex items-center justify-center w-8 h-8 rounded-full bg-amber-500/10 border border-amber-500/20 hover:bg-amber-500/20"
+            >
+              <Coins className="w-4 h-4 text-amber-400" />
+            </button>
+            <span className={`text-xs ${coins < 0 ? 'text-rose-400' : 'text-zinc-600'}`}>{coins}</span>
           </div>
         )}
       </div>
+
+      {coinsOpen && <CoinsPanel onClose={() => setCoinsOpen(false)} onChange={loadStats} />}
 
       {/* Collapse Toggle */}
       <button

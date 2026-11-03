@@ -103,7 +103,10 @@ function bestMatch<T extends { name?: string; title?: string; label?: string }>(
 // ── Tool implementations ───────────────────────────────────────────────────────
 
 async function execLogHabit(args: { habit_name: string; status: 'success' | 'failed' | 'skipped' }): Promise<ToolResult['data'] & { summary: string }> {
-  const { start, end } = getTodayISTWindow();
+  // habit_logs.logged_at is a DATE column: use the IST calendar date, never a UTC
+  // timestamp (it truncates to the UTC day, filing pre-05:30 IST logs under yesterday,
+  // which the weekly habit penalty then counts as a miss). Do not revert.
+  const today = getISTDateString();
 
   // Fetch all habits for fuzzy matching
   const { data: habits } = await supabase.from('habits').select('id, name, icon');
@@ -123,8 +126,7 @@ async function execLogHabit(args: { habit_name: string; status: 'success' | 'fai
     .from('habit_logs')
     .select('id, status')
     .eq('habit_id', match.id)
-    .gte('logged_at', start)
-    .lt('logged_at', end)
+    .eq('logged_at', today)
     .limit(1);
 
   if (existing?.length) {
@@ -141,7 +143,7 @@ async function execLogHabit(args: { habit_name: string; status: 'success' | 'fai
   const { error } = await supabase.from('habit_logs').insert({
     habit_id: match.id,
     status: args.status,
-    logged_at: new Date().toISOString(),
+    logged_at: today,
   });
 
   if (error) throw new Error(error.message);

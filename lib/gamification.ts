@@ -10,6 +10,10 @@ export interface UserStats {
     streak_start_date: string | null;
     total_entries: number;
     xp: number;
+    coins: number;
+    shields: number;
+    shield_month: string | null;
+    shield_bought: number;
     last_entry_date: string | null;
     user_timezone: string;
     current_avatar_state: AvatarState;
@@ -164,17 +168,64 @@ export function calculateLevel(xp: number) {
   };
 }
 
+// ── Coins economy ─────────────────────────────────────────────────────────────
+// xp is lifetime (level) and only grows from earnings; coins are spendable and
+// absorb penalties and purchases. All changes go through the apply_coin_tx SQL
+// function (supabase/coins.sql) so the ledger and both balances stay in sync.
+
+export const COIN_RULES = {
+  /** Per check-in short of a good habit's weekly goal */
+  missPenalty: 40,
+  /** Per day a bad habit was logged as failed */
+  failPenalty: 40,
+  /** Skipped days that reduce a week's goal (more skips are treated as misses) */
+  maxExcusedSkips: 1,
+  /** Multiplier by consecutive missed weeks for the same habit: 1st, 2nd, 3rd+ */
+  missStreakMultiplier: [1, 1.5, 2],
+  /** Habit Shield base price; doubles per purchase within a month */
+  shieldBasePrice: 150,
+} as const;
+
+export interface CoinTxResult {
+  ok: boolean;
+  duplicate?: boolean;
+  insufficient?: boolean;
+  shielded?: boolean;
+  coins?: number;
+  error?: string;
+}
+
+export async function applyCoinTx(params: {
+  amount: number;
+  xpDelta?: number;
+  source: string;
+  reason: string;
+  refId?: string;
+  meta?: Record<string, unknown>;
+  requireFunds?: boolean;
+  shieldable?: boolean;
+}): Promise<CoinTxResult> {
+  const { data, error } = await supabase.rpc('apply_coin_tx', {
+    p_amount: params.amount,
+    p_xp_delta: params.xpDelta ?? 0,
+    p_source: params.source,
+    p_reason: params.reason,
+    p_ref_id: params.refId ?? null,
+    p_meta: params.meta ?? {},
+    p_require_funds: params.requireFunds ?? false,
+    p_shieldable: params.shieldable ?? false,
+  });
+  if (error) throw error;
+  return data as CoinTxResult;
+}
+
 /**
- * Directly add XP to the user's stats. Used by Pomodoro completion and task done.
+ * Award (or correct) earnings: moves both lifetime XP and spendable coins.
+ * Used by Pomodoro completion, task done and journal entries.
  */
-export async function addXP(amount: number): Promise<void> {
+export async function addXP(amount: number, reason = 'Earned XP'): Promise<void> {
   try {
-    const stats = await getUserStats();
-    if (!stats) return;
-    await supabase
-      .from('user_stats')
-      .update({ xp: stats.xp + amount, updated_at: new Date().toISOString() })
-      .eq('id', stats.id);
+    await applyCoinTx({ amount, xpDelta: amount, source: 'earn', reason });
   } catch (err) {
     console.error('[addXP] failed:', err);
   }
@@ -221,7 +272,6 @@ export async function updateUserStatsOnEntry(clientTimezone: string = 'UTC') {
     }
 
     const gainedXp = calculateXP(isNewStreakDay, isContinuedStreak);
-    const newXp = stats.xp + gainedXp;
     const newTotalEntries = stats.total_entries + 1;
     const newState = updateAvatarState(newStreak);
 
@@ -232,7 +282,6 @@ export async function updateUserStatsOnEntry(clientTimezone: string = 'UTC') {
             longest_streak: newLongest,
             streak_start_date: newStartDate,
             total_entries: newTotalEntries,
-            xp: newXp,
             last_entry_date: nowIso,
             user_timezone: timezone,
             current_avatar_state: newState,
@@ -243,6 +292,9 @@ export async function updateUserStatsOnEntry(clientTimezone: string = 'UTC') {
     if (error) {
         console.error("Stats update error:", error);
     }
+
+    // XP goes through the ledger so coins earn alongside it
+    await addXP(gainedXp, isContinuedStreak ? 'Journal entry (streak day)' : 'Journal entry');
 
     return {
         gainedXp,
