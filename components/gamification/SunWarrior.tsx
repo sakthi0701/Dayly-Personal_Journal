@@ -1,16 +1,8 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import { Zap, Timer, Trophy, TrendingUp } from 'lucide-react';
+import { Zap, Timer, Trophy, Coins } from 'lucide-react';
 import { UserStats } from '@/lib/gamification';
-
-interface GamificationLevelInfo {
-    level: number;
-    title: string;
-    currentTierXp: number;
-    nextLevelXp: number;
-    progressPercent: number;
-}
 
 /**
  * Display-only mapping from DB avatar_state enum to user-facing labels.
@@ -26,7 +18,6 @@ function getStateDisplay(state: string) {
 
 export default function SunWarrior() {
     const [stats, setStats] = useState<UserStats | null>(null);
-    const [levelInfo, setLevelInfo] = useState<GamificationLevelInfo | null>(null);
     const [loading, setLoading] = useState(true);
 
     useEffect(() => {
@@ -36,7 +27,6 @@ export default function SunWarrior() {
                 if (res.ok) {
                     const data = await res.json();
                     setStats(data.stats);
-                    setLevelInfo(data.level);
                 }
             } catch (err) {
                 console.error("Failed to load Gamification data:", err);
@@ -79,10 +69,6 @@ export default function SunWarrior() {
                             {display.label}
                         </h2>
                     </div>
-                    <p className="text-zinc-400 font-medium tracking-wide text-sm flex items-center gap-2">
-                        <span className="text-indigo-400">Level {levelInfo?.level || 1}</span>
-                        &bull; {levelInfo?.title || 'Novice'}
-                    </p>
                 </div>
                 {streak > 0 && (
                     <div className={`flex items-center gap-2 ${display.bgAccent} border px-3 py-1.5 rounded-full`}>
@@ -94,33 +80,17 @@ export default function SunWarrior() {
 
             {/* Stats Grid — replaces the old large avatar block */}
             <div className="grid grid-cols-2 gap-4 z-10">
-                {/* XP Progress Card */}
-                <div className="bg-zinc-950/50 p-4 rounded-xl">
-                    <div className="text-zinc-500 text-xs uppercase font-bold tracking-wider mb-1 flex justify-between">
-                        <span className="flex items-center gap-1">
-                            <TrendingUp className="w-3.5 h-3.5" />
-                            Experience
-                        </span>
-                        <span className="text-indigo-400">{stats?.xp || 0} Total</span>
+                {/* Coins Card */}
+                <div className="bg-zinc-950/50 p-4 rounded-xl flex flex-col justify-between">
+                    <div className="text-zinc-500 text-xs uppercase font-bold tracking-wider flex items-center gap-1.5">
+                        <Coins className="w-3.5 h-3.5" />
+                        Coins
                     </div>
-                    <div className="flex justify-between items-end mb-2">
-                        <span className="text-2xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-indigo-400 to-purple-400">
-                            {levelInfo?.currentTierXp || 0}
-                        </span>
-                        <span className="text-zinc-500 font-mono text-sm">/ {levelInfo?.nextLevelXp || 300}</span>
-                    </div>
-
-                    {/* XP Progress Bar */}
-                    <div className="w-full h-2 bg-zinc-800 rounded-full overflow-hidden mb-2">
-                        <div
-                            className="bg-indigo-500 h-full transition-all duration-1000 ease-out relative"
-                            style={{ width: `${levelInfo?.progressPercent || 0}%` }}
-                        >
-                            <div className="absolute inset-0 bg-white/20 w-full h-full animate-[shimmer_2s_infinite]" />
-                        </div>
-                    </div>
-                    <div className="text-[10px] text-zinc-500 tracking-wide text-center uppercase">
-                        +50 XP per entry &bull; Streak bonuses apply
+                    <span className={`text-2xl font-bold mt-2 ${(stats?.coins ?? 0) < 0 ? 'text-rose-400' : 'text-amber-300'}`}>
+                        {stats?.coins ?? 0}
+                    </span>
+                    <div className="text-[10px] text-zinc-500 tracking-wide uppercase mt-1">
+                        +50 per entry &bull; Streak bonuses apply
                     </div>
                 </div>
 

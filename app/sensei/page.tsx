@@ -67,7 +67,7 @@ export default function SenseiPage() {
   const [showHistory, setShowHistory] = useState(false);
   const [openThread, setOpenThread] = useState<string | null>(null);
   const [analytics, setAnalytics] = useState<AnalyticsData | null>(null);
-  const [userStats, setUserStats] = useState<{ streak_days: number; xp: number } | null>(null);
+  const [userStats, setUserStats] = useState<{ streak_days: number } | null>(null);
   const [chartRange, setChartRange] = useState<ChartRange>(7);
   const [secondaryView, setSecondaryView] = useState<SecondaryView>('weekday');
   const [showDetails, setShowDetails] = useState(false);

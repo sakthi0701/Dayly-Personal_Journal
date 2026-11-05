@@ -16,7 +16,11 @@ export type ToolName =
   | 'get_stats'
   | 'set_reminder'
   | 'list_reminders'
-  | 'delete_reminder';
+  | 'delete_reminder'
+  | 'start_focus_timer'
+  | 'start_break_timer'
+  | 'stop_timer'
+  | 'read_journal';
 
 export const AGENT_TOOLS = [
   {
@@ -182,8 +186,10 @@ export const AGENT_TOOLS = [
     function: {
       name: 'log_journal' as ToolName,
       description:
-        'Save a journal entry. Use for ANY reflective thought, feeling, life update, observation, emotional state, or day recap. ' +
+        'Save a journal entry. Use when the user says "log ...", "journal ...", "note that ..." (and it is not a habit/task), ' +
+        'and for ANY reflective thought, feeling, life update, observation, emotional state, or day recap. ' +
         'When in doubt — if it sounds personal and not a task/habit — log it as a journal entry. ' +
+        'NEVER for requests to see/show/read the journal (e.g. "today\'s journal log", "what did I write") — use read_journal. ' +
         'The journal captures the story of the user\'s life.',
       parameters: {
         type: 'object',
@@ -202,8 +208,8 @@ export const AGENT_TOOLS = [
     function: {
       name: 'get_stats' as ToolName,
       description:
-        'Fetch the user\'s XP, level, streak, and focus time. ' +
-        'Use when user asks about their stats, progress, how they\'re doing, their level.',
+        'Fetch the user\'s coins, streak, and focus time. ' +
+        'Use when user asks about their stats, progress, coins, or how they\'re doing.',
       parameters: { type: 'object', properties: {} },
     },
   },
@@ -255,6 +261,68 @@ export const AGENT_TOOLS = [
           label: { type: 'string', description: 'Label or partial name of the reminder to delete.' },
         },
         required: ['label'],
+      },
+    },
+  },
+  {
+    type: 'function' as const,
+    function: {
+      name: 'start_focus_timer' as ToolName,
+      description:
+        'Start a Pomodoro focus timer in the Dayly app (it shows up running when the user opens the app). ' +
+        'Examples: "start a focus timer of 25 minutes", "focus 50 min on DSA", "start pomodoro". ' +
+        'ONLY set focus_on if the user has said what they are focusing on (in this message, or as their reply to ' +
+        '"what are you focusing on?"). Never guess it. If they have not said, call with minutes only.',
+      parameters: {
+        type: 'object',
+        properties: {
+          minutes: { type: 'number', description: 'Session length in minutes. Default 25.' },
+          focus_on: {
+            type: 'string',
+            description: 'What the user is focusing on, in their words (e.g. "DSA"). Omit if not stated.',
+          },
+        },
+      },
+    },
+  },
+  {
+    type: 'function' as const,
+    function: {
+      name: 'start_break_timer' as ToolName,
+      description:
+        'Start a break timer in the Dayly app. Examples: "start a break", "5 min break", "take a 15 minute break".',
+      parameters: {
+        type: 'object',
+        properties: {
+          minutes: { type: 'number', description: 'Break length in minutes. Default 5.' },
+        },
+      },
+    },
+  },
+  {
+    type: 'function' as const,
+    function: {
+      name: 'stop_timer' as ToolName,
+      description:
+        'Stop the focus or break timer that was started from Telegram. Examples: "stop the timer", "cancel my focus session", "end break".',
+      parameters: { type: 'object', properties: {} },
+    },
+  },
+  {
+    type: 'function' as const,
+    function: {
+      name: 'read_journal' as ToolName,
+      description:
+        'Show the user what is in their journal for a day. Use when they ask to see, show, read or send their journal. ' +
+        'Examples: "today\'s journal log", "show my journal", "what did I journal yesterday", "send me 3 Nov journal".',
+      parameters: {
+        type: 'object',
+        properties: {
+          date: {
+            type: 'string',
+            description: 'IST date YYYY-MM-DD. Omit for today. Resolve "yesterday" etc. from CURRENT TIME.',
+          },
+        },
       },
     },
   },

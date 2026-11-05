@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
-import { getUserStats, calculateLevel } from '@/lib/gamification';
+import { getUserStats } from '@/lib/gamification';
 
 export const dynamic = 'force-dynamic';
 
@@ -8,10 +8,8 @@ export async function GET() {
     try {
         const stats = await getUserStats();
         if (!stats) {
-            return NextResponse.json({ error: 'Stats not found', level: { level: 1, title: 'Novice', currentTierXp: 0, nextLevelXp: 300, progressPercent: 0 } }, { status: 404 });
+            return NextResponse.json({ error: 'Stats not found' }, { status: 404 });
         }
-
-        const levelData = calculateLevel(stats.xp);
 
         // Fetch recent entry dates for Activity Heatmap
         const { data: entries } = await supabase
@@ -24,7 +22,6 @@ export async function GET() {
 
         return NextResponse.json({
             stats,
-            level: levelData,
             recent_activity_dates
         });
     } catch (error) {

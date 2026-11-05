@@ -13,7 +13,7 @@ class SunWarriorWidget : AppWidgetProvider() {
     companion object {
         private const val PREFS_FILE = "CapacitorStorage"
         private const val KEY_STREAK = "streak_days"
-        private const val KEY_XP     = "xp"
+        private const val KEY_COINS  = "coins"
         const val ACTION_REFRESH = "com.dayly.WIDGET_UPDATE"
         private const val ACTION_REFRESH_MANUAL = "com.dayly.ACTION_REFRESH_MANUAL"
     }
@@ -50,16 +50,13 @@ class SunWarriorWidget : AppWidgetProvider() {
         val prefs = context.getSharedPreferences(PREFS_FILE, Context.MODE_PRIVATE)
 
         val streak = prefs.getString(KEY_STREAK, "0")?.toIntOrNull() ?: 0
-        val xp     = prefs.getString(KEY_XP, "0")?.toIntOrNull() ?: 0
+        val coins  = prefs.getString(KEY_COINS, "0")?.toIntOrNull() ?: 0
         val avatarState = prefs.getString("avatar_state", "dormant")
-        val levelTitle = prefs.getString("level_title", "Novice")
-        val levelProgress = prefs.getString("level_progress", "0")?.toIntOrNull() ?: 0
 
         val views = RemoteViews(context.packageName, R.layout.sun_warrior_widget)
 
         views.setTextViewText(R.id.widget_streak_number, streak.toString())
-        views.setTextViewText(R.id.widget_xp_text, "XP $xp")
-        views.setProgressBar(R.id.widget_xp_progress, 100, levelProgress, false)
+        views.setTextViewText(R.id.widget_coins_text, "🪙 $coins")
 
         val iconRes = when (avatarState) {
             "sun"      -> R.drawable.ic_sun_warrior_sun
@@ -73,7 +70,9 @@ class SunWarriorWidget : AppWidgetProvider() {
             "sun", "warm", "active" -> 0xFFFFD700.toInt()
             else -> 0xFF87CEEB.toInt()
         }
-        views.setTextViewText(R.id.widget_state_label, levelTitle)
+        // XP levels were retired — label shows momentum state (same wording as the app's SunWarrior card)
+        val stateLabel = if (avatarState == "sun" || avatarState == "warm" || avatarState == "active") "Momentum" else "Rebuilding"
+        views.setTextViewText(R.id.widget_state_label, stateLabel)
         views.setTextColor(R.id.widget_state_label, labelColor)
 
         // ── Action: Open App ──────────────────────────────────────────────────

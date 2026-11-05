@@ -9,7 +9,6 @@ export interface UserStats {
     longest_streak: number;
     streak_start_date: string | null;
     total_entries: number;
-    xp: number;
     coins: number;
     shields: number;
     shield_month: string | null;
@@ -113,65 +112,24 @@ export function updateAvatarState(streakDays: number): AvatarState {
 }
 
 /**
- * Calculates additional XP based on entry conditions.
+ * Coins earned for a journal entry.
  */
-export function calculateXP(isNewStreakDay: boolean, isContinuedStreak: boolean): number {
-    let gainedXp = 50; // Base XP for an entry
+export function calculateEntryCoins(isNewStreakDay: boolean, isContinuedStreak: boolean): number {
+    let gained = 50; // Base coins for an entry
     if (isNewStreakDay && isContinuedStreak) {
-        gainedXp += 50; // Streak bonus
+        gained += 50; // Streak bonus
     } else if (!isNewStreakDay) {
-        gainedXp = 10; // Small XP for multiple entries in a day
+        gained = 10; // Small reward for multiple entries in a day
     }
-    return gainedXp;
-}
-
-/**
- * Determine the user level based on an exponential XP curve.
- * Levels increase in cost to reward sustained engagement.
- */
-export const LEVEL_THRESHOLDS = [
-  { level: 1, title: 'Novice',      xp: 0 },
-  { level: 2, title: 'Apprentice',  xp: 300 },
-  { level: 3, title: 'Seeker',      xp: 750 },
-  { level: 4, title: 'Voyager',     xp: 1500 },
-  { level: 5, title: 'Adept',       xp: 3000 },
-  { level: 6, title: 'Scholar',     xp: 6000 },
-  { level: 7, title: 'Sage',        xp: 12000 },
-  { level: 8, title: 'Master',      xp: 25000 },
-];
-
-export function calculateLevel(xp: number) {
-  let currentTier = LEVEL_THRESHOLDS[0];
-  let nextTier = LEVEL_THRESHOLDS[1];
-
-  for (let i = LEVEL_THRESHOLDS.length - 1; i >= 0; i--) {
-    if (xp >= LEVEL_THRESHOLDS[i].xp) {
-      currentTier = LEVEL_THRESHOLDS[i];
-      nextTier = LEVEL_THRESHOLDS[i + 1] ?? LEVEL_THRESHOLDS[LEVEL_THRESHOLDS.length - 1];
-      break;
-    }
-  }
-
-  const tierRange = nextTier.xp - currentTier.xp;
-  const progressToNext = xp - currentTier.xp;
-  const progressPercent = tierRange > 0
-    ? Math.min(100, Math.max(0, (progressToNext / tierRange) * 100))
-    : 100;
-
-  return {
-    level: currentTier.level,
-    title: currentTier.title,
-    currentTierXp: progressToNext,
-    nextLevelXp: tierRange > 0 ? tierRange : nextTier.xp - currentTier.xp,
-    progressPercent,
-    nextTitle: nextTier.title,
-  };
+    return gained;
 }
 
 // ── Coins economy ─────────────────────────────────────────────────────────────
-// xp is lifetime (level) and only grows from earnings; coins are spendable and
-// absorb penalties and purchases. All changes go through the apply_coin_tx SQL
-// function (supabase/coins.sql) so the ledger and both balances stay in sync.
+// Coins are the only currency: earned from focus, tasks and journaling; lost to
+// habit penalties and spent in the shop. XP/levels were removed on purpose (coins
+// are enough) — don't reintroduce them. user_stats.xp stays in the DB but is no
+// longer written. All changes go through the apply_coin_tx SQL function
+// (supabase/coins.sql) so the ledger and balance stay in sync.
 
 export const COIN_RULES = {
   /** Per check-in short of a good habit's weekly goal */
@@ -197,7 +155,6 @@ export interface CoinTxResult {
 
 export async function applyCoinTx(params: {
   amount: number;
-  xpDelta?: number;
   source: string;
   reason: string;
   refId?: string;
@@ -207,7 +164,7 @@ export async function applyCoinTx(params: {
 }): Promise<CoinTxResult> {
   const { data, error } = await supabase.rpc('apply_coin_tx', {
     p_amount: params.amount,
-    p_xp_delta: params.xpDelta ?? 0,
+    p_xp_delta: 0, // XP retired — kept only because the SQL signature requires it
     p_source: params.source,
     p_reason: params.reason,
     p_ref_id: params.refId ?? null,
@@ -220,14 +177,14 @@ export async function applyCoinTx(params: {
 }
 
 /**
- * Award (or correct) earnings: moves both lifetime XP and spendable coins.
+ * Award (or correct) coin earnings.
  * Used by Pomodoro completion, task done and journal entries.
  */
-export async function addXP(amount: number, reason = 'Earned XP'): Promise<void> {
+export async function earnCoins(amount: number, reason = 'Earned coins'): Promise<void> {
   try {
-    await applyCoinTx({ amount, xpDelta: amount, source: 'earn', reason });
+    await applyCoinTx({ amount, source: 'earn', reason });
   } catch (err) {
-    console.error('[addXP] failed:', err);
+    console.error('[earnCoins] failed:', err);
   }
 }
 
@@ -271,7 +228,7 @@ export async function updateUserStatsOnEntry(clientTimezone: string = 'UTC') {
         }
     }
 
-    const gainedXp = calculateXP(isNewStreakDay, isContinuedStreak);
+    const gainedCoins = calculateEntryCoins(isNewStreakDay, isContinuedStreak);
     const newTotalEntries = stats.total_entries + 1;
     const newState = updateAvatarState(newStreak);
 
@@ -293,11 +250,10 @@ export async function updateUserStatsOnEntry(clientTimezone: string = 'UTC') {
         console.error("Stats update error:", error);
     }
 
-    // XP goes through the ledger so coins earn alongside it
-    await addXP(gainedXp, isContinuedStreak ? 'Journal entry (streak day)' : 'Journal entry');
+    await earnCoins(gainedCoins, isContinuedStreak ? 'Journal entry (streak day)' : 'Journal entry');
 
     return {
-        gainedXp,
+        gainedCoins,
         newStreak,
         isNewStreakDay,
         milestone: isNewStreakDay && [3, 7, 30].includes(newStreak) ? newStreak : null

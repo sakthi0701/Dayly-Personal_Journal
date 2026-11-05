@@ -83,8 +83,15 @@ ROUTING RULES:
 • "done with [task]" / "finished [project]" → complete_tasks or complete_pressure_tasks
 • "add task" / "new task" / "remind me to" → add_tasks
 • "urgent" / "deadline" / "pressure task" → add_pressure_tasks
+• "log X" / "journal X" / "note that X" (not a habit or task) → log_journal(content: X)
+• "today's journal log" / "show my journal" / "what did I write yesterday" → read_journal (NEVER log_journal — asking to see the journal is not an entry)
 • Reflection / feelings / life update / what happened → log_journal
-• "stats" / "my level" / "how am I doing" → get_stats
+• "stats" / "coins" / "how am I doing" → get_stats
+• "start a focus timer" / "pomodoro" / "focus N min" → start_focus_timer(minutes, focus_on only if they said what)
+• If the last assistant message asked what they are focusing on, the user's reply IS focus_on →
+  call start_focus_timer(minutes from that earlier request, focus_on: reply). Do NOT log it as a journal entry.
+• "start a break" / "N min break" → start_break_timer
+• "stop the timer" / "cancel focus" / "end break" → stop_timer
 • "remind me at X" / "set reminder" → set_reminder
 • "my reminders" / "show reminders" → list_reminders
 • "cancel/delete reminder X" → delete_reminder
@@ -128,7 +135,9 @@ YOUR RULES:
    A single-item reply stays as 1–2 plain sentences. Use *bold* for item names, _italic_ sparingly. No # headers, no tables.
 9. Never use "Great job!", "Awesome!", or generic filler words.
 10. End with a question or a direct push toward the next action.
-11. WHAT'S STILL PENDING is the live database. Chat history can be stale — never list a task or deadline that is not in it.`;
+11. If a timer was started → confirm in one line: what, how long, when it ends, and that it's running in the app. No follow-up push.
+    If it was not started because one is already running → say so and offer "stop the timer".
+12. WHAT'S STILL PENDING is the live database. Chat history can be stale — never list a task or deadline that is not in it.`;
 }
 
 // ── Journal pipeline (with Go Deeper) ─────────────────────────────────────────
@@ -149,24 +158,29 @@ async function processJournal(content: string): Promise<{ entryId: string; goDee
     hour: '2-digit', minute: '2-digit', hour12: true, timeZone: 'Asia/Kolkata',
   });
 
-  // Find or create today's plain-text entry
+  // Append to today's first entry, whether it was written in the app (Tiptap HTML) or
+  // from Telegram (plain text). Previously HTML entries were skipped, so Telegram logs
+  // landed in a second entry for the same day. Don't reintroduce the plain-text filter.
   const { data: todayEntries } = await supabase
     .from('entries')
     .select('id, content')
     .gte('created_at', start)
     .lt('created_at', end)
-    .order('created_at', { ascending: true });
+    .order('created_at', { ascending: true })
+    .limit(1);
 
-  const existing = (todayEntries ?? []).find(
-    (e) => e.content && !e.content.trimStart().startsWith('<')
-  ) ?? null;
+  const existing = todayEntries?.[0] ?? null;
 
   let entryId: string;
   let fullContent: string;
 
   if (existing) {
-    fullContent = `${existing.content}\n\n${timeIST} · ${content}`;
-    await supabase.from('entries').update({ content: fullContent }).eq('id', existing.id);
+    const isHtml = (existing.content ?? '').trimStart().startsWith('<');
+    fullContent = isHtml
+      ? `${existing.content}<p>${escapeHtml(`${timeIST} · ${content}`)}</p>`
+      : `${existing.content ?? ''}\n\n${timeIST} · ${content}`;
+    const { error } = await supabase.from('entries').update({ content: fullContent }).eq('id', existing.id);
+    if (error) throw new Error(error.message);
     entryId = existing.id;
   } else {
     fullContent = `${timeIST} · ${content}`;
@@ -204,15 +218,21 @@ async function processJournal(content: string): Promise<{ entryId: string; goDee
       .filter((e) => e.content.trim().length > 10);
   }
 
-  const goDeeperQuestion = await generateGoDeeperQuestion(fullContent, datedContext);
+  const goDeeperQuestion = await generateGoDeeperQuestion(stripHtml(fullContent), datedContext);
   return { entryId, goDeeperQuestion };
+}
+
+function escapeHtml(text: string): string {
+  return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
 // ── Background journal work (called via after()) ───────────────────────────────
 
 export async function processJournalBackground(entryId: string, content: string): Promise<void> {
   try {
-    const embedding = await generateEmbedding(content);
+    // Embed the whole (merged) entry, not just the new line — the embedding represents the entry
+    const { data: entry } = await supabase.from('entries').select('content').eq('id', entryId).single();
+    const embedding = await generateEmbedding(stripHtml(entry?.content ?? content));
     await supabase.from('entries').update({ embedding }).eq('id', entryId);
   } catch (e) { console.error('[Pipeline] Embedding failed:', e); }
   try {
@@ -363,6 +383,21 @@ export async function runAgentPipeline(
   // Append Go Deeper question if journal was logged
   if (goDeeperQuestion) {
     response = `✅ _Saved._\n\n🧠 *Sensei:* ${goDeeperQuestion}`;
+  }
+
+  // Focus timer requested without a target: ask with a fixed question (the router's next turn
+  // keys off "what are you focusing on" in history to complete the call — keep the wording).
+  const focusQuestion = toolResults.find((r) => r.tool_name === 'start_focus_timer' && r.data.needs_focus_on);
+  if (focusQuestion) {
+    response = `🎯 ${focusQuestion.data.minutes}-min focus. What are you focusing on?`;
+  }
+
+  // Journal read-back is sent verbatim — the responder's 80-word limit would summarise it away
+  const journalRead = toolResults.find((r) => r.tool_name === 'read_journal' && r.success);
+  if (journalRead) {
+    response = journalRead.data.found
+      ? `📓 *${journalRead.data.label}'s journal*\n\n${journalRead.data.text}`
+      : `📓 Nothing in your journal for ${journalRead.data.label} yet.`;
   }
 
   return { response, toolResults, journalEntryId };

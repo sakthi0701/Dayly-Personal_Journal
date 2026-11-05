@@ -62,24 +62,12 @@
         android:fontFamily="sans-serif"
         android:layout_marginBottom="8dp" />
 
-    <!-- XP Progress Bar -->
-    <ProgressBar
-        android:id="@+id/widget_xp_progress"
-        style="?android:attr/progressBarStyleHorizontal"
-        android:layout_width="match_parent"
-        android:layout_height="5dp"
-        android:max="100"
-        android:progress="0"
-        android:progressTint="#FFD700"
-        android:progressBackgroundTint="#1A2040"
-        android:layout_marginBottom="3dp" />
-
-    <!-- XP value text -->
+    <!-- Coin balance -->
     <TextView
-        android:id="@+id/widget_xp_text"
+        android:id="@+id/widget_coins_text"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
-        android:text="XP 0"
+        android:text="🪙 0"
         android:textColor="#87CEEB"
         android:textSize="8sp"
         android:fontFamily="sans-serif" />

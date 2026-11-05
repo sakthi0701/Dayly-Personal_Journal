@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
-import { addXP } from '@/lib/gamification';
+import { earnCoins } from '@/lib/gamification';
 
 // PATCH /api/pressure-tasks/[id]
 export async function PATCH(request: Request, { params }: { params: Promise<{ id: string }> }) {
@@ -37,15 +37,15 @@ export async function PATCH(request: Request, { params }: { params: Promise<{ id
       .single();
     if (error) throw error;
 
-    // Award XP on completion — on-time vs late (only on transition)
+    // Award coins on completion — on-time vs late (only on transition)
     if (status === 'done' && existingTask?.status !== 'done') {
       if (data.deadline) {
         const deadline_ts = new Date(data.deadline).getTime();
         const now = Date.now();
         const isOnTime = now <= deadline_ts;
-        await addXP(isOnTime ? 20 : 8, `${isOnTime ? 'On-time' : 'Late'} pressure task: ${data.title}`);
+        await earnCoins(isOnTime ? 20 : 8, `${isOnTime ? 'On-time' : 'Late'} pressure task: ${data.title}`);
       } else {
-        await addXP(8, `Pressure task: ${data.title}`); // Give base XP if no deadline
+        await earnCoins(8, `Pressure task: ${data.title}`); // Base coins if no deadline
       }
 
       // Increment completed_task_count for the goal

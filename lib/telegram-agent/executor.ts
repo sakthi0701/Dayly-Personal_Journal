@@ -8,7 +8,8 @@
 
 import { supabase } from '@/lib/supabase';
 import { updateUserStatsOnEntry } from '@/lib/gamification';
-import { getUserStats, calculateLevel } from '@/lib/gamification';
+import { getUserStats } from '@/lib/gamification';
+import { getRemoteTimer, isLive, elapsedSeconds, startRemoteTimer, endRemoteTimer } from '@/lib/remoteTimer';
 import type { ToolName } from './tools';
 
 // ── Types ──────────────────────────────────────────────────────────────────────
@@ -315,7 +316,6 @@ async function execGetStats(): Promise<ToolResult['data'] & { summary: string }>
   const stats = await getUserStats();
   if (!stats) return { summary: 'Could not fetch stats.' };
 
-  const levelData = calculateLevel(stats.xp);
   const { start, end } = getTodayISTWindow();
 
   const { data: todayBlocks } = await supabase
@@ -329,14 +329,144 @@ async function execGetStats(): Promise<ToolResult['data'] & { summary: string }>
   );
 
   return {
-    level: levelData.level,
-    level_title: levelData.title,
-    xp: stats.xp,
-    progress_percent: levelData.progressPercent,
+    coins: stats.coins,
     streak_days: stats.streak_days ?? 0,
     focus_today_mins: todayMins,
-    summary: `Level ${levelData.level} (${levelData.title}) | ${stats.xp} XP | ${stats.streak_days ?? 0}-day streak | ${todayMins}min focus today.`,
+    summary: `${stats.coins} coins | ${stats.streak_days ?? 0}-day streak | ${todayMins}min focus today.`,
   };
+}
+
+// ── Journal read-back ──────────────────────────────────────────────────────────
+
+/** Telegram caps a message at 4096 chars; leave room for the header. */
+const JOURNAL_REPLY_MAX_CHARS = 3500;
+
+/** Entry content → readable text, keeping paragraph breaks (app entries are Tiptap HTML). */
+function entryToText(content: string): string {
+  if (!content.trimStart().startsWith('<')) return content.trim();
+  return content
+    .replace(/<br\s*\/?>/gi, '\n')
+    .replace(/<\/(p|h[1-6]|li|blockquote)>/gi, '\n')
+    .replace(/<li[^>]*>/gi, '- ')
+    .replace(/<[^>]+>/g, '')
+    .replace(/&nbsp;/g, ' ').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"').replace(/&amp;/g, '&')
+    .split('\n').map((l) => l.trim()).filter(Boolean).join('\n');
+}
+
+async function execReadJournal(args: { date?: string }): Promise<ToolResult['data'] & { summary: string }> {
+  const date = args.date && /^\d{4}-\d{2}-\d{2}$/.test(args.date) ? args.date : getISTDateString();
+  const start = new Date(`${date}T00:00:00+05:30`);
+  const end = new Date(start.getTime() + 24 * 60 * 60 * 1000);
+
+  const { data: entries, error } = await supabase
+    .from('entries')
+    .select('content, created_at')
+    .gte('created_at', start.toISOString())
+    .lt('created_at', end.toISOString())
+    .order('created_at', { ascending: true });
+  if (error) throw new Error(error.message);
+
+  const label = date === getISTDateString()
+    ? 'Today'
+    : start.toLocaleDateString('en-IN', { timeZone: 'Asia/Kolkata', weekday: 'short', day: 'numeric', month: 'short' });
+  const texts = (entries ?? []).map((e) => entryToText(e.content ?? '')).filter(Boolean);
+  if (texts.length === 0) {
+    return { date, found: false, text: '', label, summary: `No journal entries for ${label}.` };
+  }
+
+  let text = texts.join('\n\n———\n\n');
+  if (text.length > JOURNAL_REPLY_MAX_CHARS) text = `${text.slice(0, JOURNAL_REPLY_MAX_CHARS)}…\n\n_(truncated — open Dayly for the full entry)_`;
+  return { date, found: true, text, label, summary: `Read ${texts.length} journal entr${texts.length === 1 ? 'y' : 'ies'} for ${label}.` };
+}
+
+// ── Timers (shown live in the app via lib/remoteTimer.ts) ──────────────────────
+
+const MAX_TIMER_MINUTES = 180;
+
+function clampMinutes(raw: unknown, fallback: number): number {
+  const n = Number(raw);
+  if (!Number.isFinite(n) || n <= 0) return fallback;
+  return Math.min(MAX_TIMER_MINUTES, Math.round(n));
+}
+
+/** Returns a "busy" result if a Telegram-started timer is still running, else null. */
+async function runningTimerConflict(): Promise<(ToolResult['data'] & { summary: string }) | null> {
+  const current = await getRemoteTimer();
+  if (!isLive(current)) return null;
+  const minsLeft = Math.ceil((current.duration_seconds - elapsedSeconds(current)) / 60);
+  const what = current.kind === 'focus' ? `focus session${current.task_title ? ` on "${current.task_title}"` : ''}` : 'break';
+  return {
+    started: false,
+    already_running: true,
+    summary: `Not started: a ${what} is already running (${minsLeft} min left). The user must stop it first ("stop the timer").`,
+  };
+}
+
+async function execStartFocusTimer(args: { minutes?: number; focus_on?: string }): Promise<ToolResult['data'] & { summary: string }> {
+  const minutes = clampMinutes(args.minutes, 25);
+  const focusOn = args.focus_on?.trim();
+
+  // The user asked to always be asked what the session is for — pipeline.ts replies
+  // with the question and the next message completes the call. Don't auto-fill this.
+  if (!focusOn) {
+    return { started: false, needs_focus_on: true, minutes, summary: `Need to know what the user is focusing on before starting the ${minutes}-min timer.` };
+  }
+
+  const conflict = await runningTimerConflict();
+  if (conflict) return conflict;
+
+  // Link to an existing task when the label matches one (counts its pomodoros); otherwise free-text label
+  const [{ data: tasks }, { data: pressure }] = await Promise.all([
+    supabase.from('tasks').select('id, title').in('status', ['todo', 'in-progress']).is('parent_task_id', null),
+    supabase.from('pressure_tasks').select('id, title').in('status', ['todo', 'snoozed']),
+  ]);
+  const taskMatch = bestMatch(focusOn, tasks ?? []);
+  const pressureMatch = taskMatch ? null : bestMatch(focusOn, pressure ?? []);
+  const linked = taskMatch ?? pressureMatch;
+
+  const timer = await startRemoteTimer({
+    kind: 'focus',
+    minutes,
+    taskId: linked?.id ?? null,
+    taskIsPressure: !!pressureMatch,
+    taskTitle: linked?.title ?? focusOn,
+  });
+
+  const endsAt = new Date(new Date(timer.started_at).getTime() + minutes * 60_000)
+    .toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata', hour: 'numeric', minute: '2-digit', hour12: true });
+  const filters = timer.not_to_do.length > 0 ? timer.not_to_do.map((n) => `${n.emoji} ${n.label}`).join(', ') : 'none set';
+
+  return {
+    started: true,
+    minutes,
+    focus_on: timer.task_title,
+    linked_task: linked ? linked.title : null,
+    ends_at_ist: endsAt,
+    not_to_dos: timer.not_to_do.map((n) => n.label),
+    summary: `Focus timer started: ${minutes} min on "${timer.task_title}"${linked ? ' (linked to task)' : ''}, ends ${endsAt} IST. Not-to-dos: ${filters}. Strict mode off. It's running in the app.`,
+  };
+}
+
+async function execStartBreakTimer(args: { minutes?: number }): Promise<ToolResult['data'] & { summary: string }> {
+  const minutes = clampMinutes(args.minutes, 5);
+  const conflict = await runningTimerConflict();
+  if (conflict) return conflict;
+
+  const timer = await startRemoteTimer({ kind: 'break', minutes });
+  const endsAt = new Date(new Date(timer.started_at).getTime() + minutes * 60_000)
+    .toLocaleTimeString('en-IN', { timeZone: 'Asia/Kolkata', hour: 'numeric', minute: '2-digit', hour12: true });
+  return { started: true, minutes, ends_at_ist: endsAt, summary: `Break timer started: ${minutes} min, ends ${endsAt} IST. Running in the app.` };
+}
+
+async function execStopTimer(): Promise<ToolResult['data'] & { summary: string }> {
+  const current = await getRemoteTimer();
+  if (!isLive(current)) {
+    return { stopped: false, summary: 'No Telegram-started timer is running (timers started inside the app can only be stopped there).' };
+  }
+  const minsDone = Math.floor(elapsedSeconds(current) / 60);
+  await endRemoteTimer({ sessionId: current.session_id, source: 'bot' });
+  const what = current.kind === 'focus' ? `Focus session${current.task_title ? ` on "${current.task_title}"` : ''}` : 'Break';
+  return { stopped: true, kind: current.kind, minutes_done: minsDone, summary: `${what} stopped after ${minsDone} min.` };
 }
 
 async function execSetReminder(args: {
@@ -475,6 +605,18 @@ export async function executeTools(toolCalls: ToolCall[]): Promise<ToolResult[]>
           break;
         case 'delete_reminder':
           data = await execDeleteReminder(args as Parameters<typeof execDeleteReminder>[0]);
+          break;
+        case 'start_focus_timer':
+          data = await execStartFocusTimer(args as Parameters<typeof execStartFocusTimer>[0]);
+          break;
+        case 'start_break_timer':
+          data = await execStartBreakTimer(args as Parameters<typeof execStartBreakTimer>[0]);
+          break;
+        case 'stop_timer':
+          data = await execStopTimer();
+          break;
+        case 'read_journal':
+          data = await execReadJournal(args as Parameters<typeof execReadJournal>[0]);
           break;
         default:
           data = { summary: `Unknown tool: ${name}` };

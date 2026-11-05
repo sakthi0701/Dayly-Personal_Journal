@@ -11,7 +11,6 @@
  */
 
 import { Preferences } from '@capacitor/preferences';
-import { calculateLevel } from './gamification';
 import { registerPlugin } from '@capacitor/core';
 
 export interface WidgetBroadcasterPlugin {
@@ -28,7 +27,7 @@ interface CacheEntry<T> {
 // ─── TTL CONFIGURATION ────────────────────────────────────────────────────────
 // Tune these to balance freshness vs. API call frequency.
 export const CACHE_TTL = {
-  USER_STATS: 5 * 60 * 1000,       // 5 min  — streak/XP (changes after journaling)
+  USER_STATS: 5 * 60 * 1000,       // 5 min  — streak/coins (changes after journaling)
   ENTRIES_LIST: 15 * 60 * 1000,    // 15 min — entry list (changes rarely mid-session)
   TASKS: 10 * 60 * 1000,           // 10 min — tasks
   HABITS: 10 * 60 * 1000,          // 10 min — habits
@@ -306,16 +305,13 @@ export async function triggerWidgetDataSync(): Promise<void> {
 
     await syncWidgetsToNative(combinedTasks, habits, goals);
 
-    // Sync Sun Warrior stats so SunWarriorWidget can display live streak/XP/Level
+    // Sync Sun Warrior stats so SunWarriorWidget can display live streak/coins
     if (statsRes?.stats) {
-      const { streak_days, xp, current_avatar_state } = statsRes.stats;
-      const level = calculateLevel(xp);
+      const { streak_days, coins, current_avatar_state } = statsRes.stats;
 
       await Preferences.set({ key: 'streak_days', value: String(streak_days ?? 0) });
-      await Preferences.set({ key: 'xp', value: String(xp ?? 0) });
+      await Preferences.set({ key: 'coins', value: String(coins ?? 0) });
       await Preferences.set({ key: 'avatar_state', value: current_avatar_state || 'dormant' });
-      await Preferences.set({ key: 'level_title', value: level.title });
-      await Preferences.set({ key: 'level_progress', value: String(Math.round(level.progressPercent)) });
 
       if (typeof window !== 'undefined') {
         await WidgetBroadcaster.sendUpdate().catch(() => {});

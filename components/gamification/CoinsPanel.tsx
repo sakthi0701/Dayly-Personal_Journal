@@ -8,7 +8,6 @@ interface ShopItem { id: string; name: string; price: number }
 interface Activity { id: string; amount: number; reason: string; source: string; meta: { shielded?: boolean; blocked?: number }; created_at: string }
 interface CoinsData {
   coins: number;
-  xp: number;
   shields: number;
   shieldsBoughtThisMonth: number;
   shieldPrice: number;
@@ -87,10 +86,9 @@ export default function CoinsPanel({ onClose, onChange }: { onClose: () => void;
                 <button onClick={onClose} className="text-zinc-400 hover:text-white" aria-label="Close"><X className="w-5 h-5" /></button>
               </div>
               <p className="text-sm text-zinc-400 mt-1">
-                Earned with every XP. Lose {data.rules.missPenalty} per check-in short of a habit&apos;s weekly goal
+                Earned from focus sessions, tasks and journaling. Lose {data.rules.missPenalty} per check-in short of a habit&apos;s weekly goal
                 and {data.rules.failPenalty} per bad-habit slip, settled Monday. Missing again the next week costs more.
               </p>
-              <p className="text-xs text-zinc-500 mt-1">Level XP: {data.xp} (never goes down)</p>
             </div>
 
             {inDebt && (

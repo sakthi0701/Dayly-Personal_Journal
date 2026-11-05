@@ -201,7 +201,7 @@ export default function PiPTimerContent({ onClose }: PiPTimerContentProps) {
           <>
             <div className="text-4xl mb-2">🍅</div>
             <p className="text-base font-bold text-white">Session Complete!</p>
-            <p className="text-xs text-zinc-400 mt-0.5 mb-4">Review session in main tab to claim XP.</p>
+            <p className="text-xs text-zinc-400 mt-0.5 mb-4">Review session in main tab to claim coins.</p>
 
             <div className="flex flex-col gap-2 w-full max-w-[220px]">
               <button
@@ -262,13 +262,12 @@ export default function PiPTimerContent({ onClose }: PiPTimerContentProps) {
         )}
 
         {/* Status pill */}
-        <div className={`flex items-center gap-1 text-[10px] font-semibold uppercase tracking-widest px-2.5 py-1 rounded-full ${
-          isPaused
+        <div className={`flex items-center gap-1 text-[10px] font-semibold uppercase tracking-widest px-2.5 py-1 rounded-full ${isPaused
             ? 'text-amber-400 bg-amber-500/10 border border-amber-500/20'
             : state.isBreak
-            ? 'text-emerald-400 bg-emerald-500/10 border border-emerald-500/20'
-            : 'text-indigo-400 bg-indigo-500/10 border border-indigo-500/20'
-        }`}>
+              ? 'text-emerald-400 bg-emerald-500/10 border border-emerald-500/20'
+              : 'text-indigo-400 bg-indigo-500/10 border border-indigo-500/20'
+          }`}>
           <span className={`w-1.5 h-1.5 rounded-full ${isPaused ? 'bg-amber-400' : state.isBreak ? 'bg-emerald-400 animate-pulse' : 'bg-indigo-400 animate-pulse'}`} />
           {isPaused ? 'Paused' : state.isBreak ? 'On Break' : 'Running'}
         </div>
@@ -279,14 +278,12 @@ export default function PiPTimerContent({ onClose }: PiPTimerContentProps) {
         {/* Pause / Resume */}
         <button
           onClick={isPaused ? resumeTimer : pauseTimer}
-          className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-sm font-medium transition-all ${
-            isPaused
+          className={`flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-sm font-medium transition-all ${isPaused
               ? 'bg-indigo-600 hover:bg-indigo-500 text-white'
               : 'bg-zinc-800 hover:bg-zinc-700 text-zinc-300 hover:text-white'
-          }`}
+            }`}
         >
           {isPaused ? <Play className="w-4 h-4" /> : <Pause className="w-4 h-4" />}
-          {isPaused ? 'Resume' : 'Pause'}
         </button>
 
         {/* +1 min extend (Pomodoro only) */}

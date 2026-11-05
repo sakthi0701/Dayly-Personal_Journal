@@ -10,12 +10,7 @@
 
 import { NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
-
-function breakMessage(taskTitle: string | null): string {
-  return taskTitle
-    ? `Back to *${taskTitle}* — start the next session now.`
-    : 'Time to get back into deep work. What are you starting?';
-}
+import { breakOverMessage } from '@/lib/remoteTimer';
 
 export async function POST(request: Request) {
   try {
@@ -24,7 +19,7 @@ export async function POST(request: Request) {
 
     const { data, error } = await supabase
       .from('telegram_reminders')
-      .insert({ label: '☕ Break over', message: breakMessage(taskTitle), remind_at: endsAt, is_recurring: false, is_active: true })
+      .insert({ label: '☕ Break over', message: breakOverMessage(taskTitle), remind_at: endsAt, is_recurring: false, is_active: true })
       .select('id')
       .single();
     if (error) throw error;

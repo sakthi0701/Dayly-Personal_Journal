@@ -52,7 +52,7 @@ export async function POST(req: Request) {
 
         console.log(`Entry ${entry_id} processed successfully.`);
 
-        // 3. Update Statistics (Streaks/XP)
+        // 3. Update Statistics (Streaks/coins)
         await updateUserStatsOnEntry();
 
         return NextResponse.json({ success: true });

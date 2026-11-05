@@ -9,7 +9,6 @@ import {
   BookOpen,
   ChevronLeft,
   ChevronRight,
-  Zap,
   Flame,
   Timer,
   Brain,
@@ -19,11 +18,9 @@ import {
 } from 'lucide-react';
 import MiniPlayer from '@/components/timer/MiniPlayer';
 import CoinsPanel from '@/components/gamification/CoinsPanel';
-import { LEVEL_THRESHOLDS } from '@/lib/gamification';
 
 interface UserStats {
   streak_days: number;
-  xp: number;
   coins: number;
   current_avatar_state: string;
 }
@@ -37,22 +34,6 @@ const NAV_ITEMS = [
   { href: '/settings', icon: Settings,       label: 'Settings' },
 ];
 
-
-/** Use the canonical level table from gamification.ts */
-function getLevelInfo(xp: number) {
-  let current = LEVEL_THRESHOLDS[0];
-  let next = LEVEL_THRESHOLDS[1];
-  for (let i = LEVEL_THRESHOLDS.length - 1; i >= 0; i--) {
-    if (xp >= LEVEL_THRESHOLDS[i].xp) {
-      current = LEVEL_THRESHOLDS[i];
-      next = LEVEL_THRESHOLDS[i + 1] ?? LEVEL_THRESHOLDS[LEVEL_THRESHOLDS.length - 1];
-      break;
-    }
-  }
-  const range = next.xp - current.xp;
-  const progress = range > 0 ? Math.round(((xp - current.xp) / range) * 100) : 100;
-  return { title: current.title, nextTitle: next.title, progress, current, next };
-}
 
 export default function Sidebar() {
   const pathname = usePathname();
@@ -71,10 +52,8 @@ export default function Sidebar() {
 
   useEffect(loadStats, []);
 
-  const xp = stats?.xp ?? 0;
   const coins = stats?.coins ?? 0;
   const streak = stats?.streak_days ?? 0;
-  const { title: level, progress, next } = getLevelInfo(xp);
 
   return (
     <aside
@@ -121,7 +100,7 @@ export default function Sidebar() {
       {/* MiniPlayer — Spotify-style persistent timer */}
       <MiniPlayer collapsed={collapsed} />
 
-      {/* Bottom Anchor — XP & Streak */}
+      {/* Bottom Anchor — Streak & Coins */}
       <div className="border-t border-zinc-800/60 px-3 py-4">
         {!collapsed ? (
           <div className="space-y-3">
@@ -133,7 +112,6 @@ export default function Sidebar() {
                   {streak > 0 ? `${streak} day streak` : 'No streak yet'}
                 </span>
               </div>
-              <span className="text-xs text-zinc-500">{level}</span>
             </div>
 
             {/* Coins — spendable balance, opens the shop */}
@@ -147,23 +125,6 @@ export default function Sidebar() {
               </span>
               <span className={`text-xs font-semibold ${coins < 0 ? 'text-rose-400' : 'text-amber-300'}`}>{coins}</span>
             </button>
-
-            {/* XP Bar */}
-            <div className="space-y-1">
-              <div className="flex justify-between text-xs text-zinc-600">
-                <span className="flex items-center gap-1">
-                  <Zap className="w-3 h-3 text-indigo-400" />
-                  {xp} XP
-                </span>
-                <span>{next.xp} XP</span>
-              </div>
-              <div className="h-1.5 bg-zinc-800 rounded-full overflow-hidden">
-                <div
-                  className="h-full bg-gradient-to-r from-indigo-600 to-indigo-400 rounded-full transition-all duration-500"
-                  style={{ width: `${progress}%` }}
-                />
-              </div>
-            </div>
           </div>
         ) : (
           <div className="flex flex-col items-center gap-2">

@@ -96,7 +96,7 @@ export default function GlobalTimerUI() {
           notifications: [
             {
               title: state.isBreak ? '☕ Break Over!' : '🍅 Pomodoro Complete!',
-              body: state.isBreak ? 'Time to get back into deep work.' : 'Great work! Review your session for bonus XP.',
+              body: state.isBreak ? 'Time to get back into deep work.' : 'Great work! Review your session for bonus coins.',
               id: Math.floor(Date.now() / 1000) % 100000,
               schedule: { at: new Date(Date.now() + 1000) },
             }
@@ -190,10 +190,10 @@ export default function GlobalTimerUI() {
              <div className="bg-zinc-900 p-8 rounded-2xl border border-zinc-800 text-center shadow-2xl animate-slide-up max-w-sm w-full mx-4">
                 <div className="text-4xl mb-4">🍅</div>
                 <h2 className="text-2xl font-bold mb-2">Session Complete!</h2>
-                <p className="text-sm text-zinc-400 mb-6">Great work! Review your session to claim your XP.</p>
+                <p className="text-sm text-zinc-400 mb-6">Great work! Review your session to claim your coins.</p>
                 <div className="flex flex-col gap-2">
                   <Link href="/focus" onClick={() => setShowBreak(false)} className="px-6 py-3 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl font-bold shadow-lg shadow-indigo-600/20 transition-all block">
-                    Review Session &amp; Claim XP
+                    Review Session &amp; Claim Coins
                   </Link>
                   <button onClick={() => extendTimer(1)} className="px-6 py-3 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 rounded-xl font-medium transition-all">
                     Extend +1 min

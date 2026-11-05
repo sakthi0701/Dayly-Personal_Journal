@@ -17,7 +17,7 @@ interface Props {
     triggeredDistractions: NotToDoItem[];
     completionNote: string;
   }) => void;
-  xpResult: { xpEarned: number; xpDeducted: number; cleanSession: boolean; untracked?: boolean } | null;
+  coinResult: { coinsEarned: number; coinsDeducted: number; cleanSession: boolean; untracked?: boolean } | null;
   isSubmitting: boolean;
 }
 
@@ -26,7 +26,7 @@ export default function SessionReviewSheet({
   taskTitle,
   sessionMinutes,
   onSubmit,
-  xpResult,
+  coinResult,
   isSubmitting,
 }: Props) {
   const loggedDistractions = useTimer(state => state.loggedDistractions);
@@ -69,12 +69,12 @@ export default function SessionReviewSheet({
     onSubmit({ triggeredDistractions, completionNote: note });
   };
 
-  // ── Post-submit: XP result display ─────────────────────────────────────────
-  if (submitted && xpResult) {
-    const net = xpResult.xpEarned - xpResult.xpDeducted;
+  // ── Post-submit: coin result display────────────────────────────────────────
+  if (submitted && coinResult) {
+    const net = coinResult.coinsEarned - coinResult.coinsDeducted;
 
     // ── Untracked session (blockId was null — started offline or cross-midnight) ──
-    if (xpResult.untracked) {
+    if (coinResult.untracked) {
       return (
         <div className="fixed inset-0 z-50 flex items-end justify-center sm:items-center p-4">
           <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
@@ -123,7 +123,7 @@ export default function SessionReviewSheet({
         <div className="relative w-full max-w-sm bg-zinc-900 border border-zinc-700 rounded-2xl p-6 text-center shadow-2xl animate-slide-up">
           {/* Session complete celebration */}
           <div className="mb-4">
-            {xpResult.cleanSession ? (
+            {coinResult.cleanSession ? (
               <>
                 <div className="text-4xl mb-2">⚡</div>
                 <h2 className="text-lg font-bold text-white">Clean Session!</h2>
@@ -140,27 +140,27 @@ export default function SessionReviewSheet({
             )}
           </div>
 
-          {/* XP breakdown */}
+          {/* Coin breakdown */}
           <div className="bg-zinc-800/60 border border-zinc-700/60 rounded-xl p-4 mb-4 text-sm space-y-2">
             <div className="flex items-center justify-between text-zinc-300">
               <span className="flex items-center gap-1.5"><Zap className="w-3.5 h-3.5 text-amber-400" /> Focus session</span>
-              <span className="text-amber-400 font-medium">+30 XP</span>
+              <span className="text-amber-400 font-medium">+30 coins</span>
             </div>
-            {xpResult.cleanSession && (
+            {coinResult.cleanSession && (
               <div className="flex items-center justify-between text-zinc-300">
                 <span className="flex items-center gap-1.5"><Star className="w-3.5 h-3.5 text-emerald-400" /> Clean session bonus</span>
-                <span className="text-emerald-400 font-medium">+15 XP</span>
+                <span className="text-emerald-400 font-medium">+15 coins</span>
               </div>
             )}
-            {xpResult.xpDeducted > 0 && (
+            {coinResult.coinsDeducted > 0 && (
               <div className="flex items-center justify-between text-zinc-400">
                 <span className="flex items-center gap-1.5"><AlertTriangle className="w-3.5 h-3.5 text-amber-500" /> Distractions</span>
-                <span className="text-amber-500 font-medium">-{xpResult.xpDeducted} XP</span>
+                <span className="text-amber-500 font-medium">-{coinResult.coinsDeducted} coins</span>
               </div>
             )}
             <div className="pt-2 border-t border-zinc-700 flex items-center justify-between font-semibold">
               <span className="text-white">Total earned</span>
-              <span className="text-amber-400 text-base">+{net} XP</span>
+              <span className="text-amber-400 text-base">+{net} coins</span>
             </div>
           </div>
 
@@ -272,7 +272,7 @@ export default function SessionReviewSheet({
 
               {triggered.size === 0 ? (
                 <p className="text-xs text-emerald-400 mt-2 flex items-center gap-1.5">
-                  <Check className="w-3.5 h-3.5" /> Clean session! +15 XP bonus
+                  <Check className="w-3.5 h-3.5" /> Clean session! +15 coins bonus
                 </p>
               ) : (
                 <p className="text-xs text-zinc-500 mt-2">

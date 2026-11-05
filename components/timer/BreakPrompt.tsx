@@ -36,7 +36,7 @@ export default function BreakPrompt({ onStartBreak, onSkipBreak, onExtend }: Bre
             <p className="text-2xl font-bold text-white">{Math.floor((state.duration) / 60)}</p>
             <p className="text-xs text-zinc-500">Minutes focused</p>
           </div>
-          {state.task && (
+          {state.task && state.task.estimated_pomodoros > 0 && (
             <div className="text-center">
               <p className="text-2xl font-bold text-emerald-400">
                 {state.task.elapsed_pomodoros + 1}/{state.task.estimated_pomodoros}
@@ -46,7 +46,7 @@ export default function BreakPrompt({ onStartBreak, onSkipBreak, onExtend }: Bre
           )}
           <div className="text-center">
             <p className="text-2xl font-bold text-indigo-400">+30</p>
-            <p className="text-xs text-zinc-500">XP earned</p>
+            <p className="text-xs text-zinc-500">Coins earned</p>
           </div>
         </div>
 

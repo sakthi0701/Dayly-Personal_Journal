@@ -155,7 +155,7 @@ object WidgetSyncHelper {
                 val userStats = statsObj?.optJSONObject("stats")
                 if (userStats != null) {
                     editor.putString("streak_days", userStats.optString("streak_days", "0"))
-                    editor.putString("xp", userStats.optString("xp", "0"))
+                    editor.putString("coins", userStats.optString("coins", "0"))
                     editor.putString("avatar_state", userStats.optString("current_avatar_state", "dormant"))
                 }
                 editor.apply()

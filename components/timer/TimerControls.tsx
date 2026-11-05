@@ -23,7 +23,7 @@ export default function TimerControls({ onFlipClock, onComplete, onStart }: Time
   const state = { status, task };
 
   const handleComplete = async () => {
-    // completeTimer with no args still saves session; review sheet handles XP breakdown
+    // completeTimer with no args still saves session; review sheet handles coin breakdown
     await completeTimer();
     onComplete?.();
   };

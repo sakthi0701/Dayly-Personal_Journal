@@ -38,6 +38,8 @@ export interface TimerState {
   isBreak: boolean;
   loggedDistractions: LoggedDistraction[];
   breakReminderId: string | null; // telegram_reminders row that pings Telegram when the break ends
+  remoteSessionId: string | null; // last Telegram-started session seen (adopted once, never re-adopted)
+  remoteLinked: boolean;          // the current session is that Telegram-started one
 }
 
 export interface TimerStore extends TimerState {
@@ -50,7 +52,7 @@ export interface TimerStore extends TimerState {
   startBreak: (minutes: number) => void;
   pauseTimer: () => void;
   resumeTimer: () => void;
-  completeTimer: (reviewData?: { triggeredDistractions: NotToDoItem[]; completionNote?: string }) => Promise<{ xpEarned: number; xpDeducted: number; cleanSession: boolean } | null>;
+  completeTimer: (reviewData?: { triggeredDistractions: NotToDoItem[]; completionNote?: string }) => Promise<{ coinsEarned: number; coinsDeducted: number; cleanSession: boolean } | null>;
   abandonTimer: (failedReason?: string) => Promise<void>;
   setMode: (mode: TimerMode) => void;
   setDuration: (minutes: number) => void;
@@ -60,6 +62,7 @@ export interface TimerStore extends TimerState {
   logDistraction: (item: { label: string; emoji: string }) => void;
   dismissTimer: () => void;
   tick: () => void;
+  syncRemoteTimer: () => Promise<void>;
 }
 
 const POMODORO_DURATION = 25 * 60;
@@ -129,6 +132,39 @@ function syncBreakAlert(): void {
     .catch((err) => console.error('[break] alert sync failed', err));
 }
 
+// ─── Telegram-started timers ─────────────────────────────────────────────────
+// The bot can't touch localStorage, so it writes the session to remote_timer
+// (lib/remoteTimer.ts) and the app polls /api/timer/remote to take it over.
+
+const REMOTE_POLL_MS = 15_000;
+
+interface RemoteTimerPayload {
+  session_id: string;
+  kind: 'focus' | 'break';
+  status: 'running' | 'ended';
+  duration_seconds: number;
+  elapsed_seconds: number;
+  block_id: string | null;
+  task_id: string | null;
+  task_title: string | null;
+  strict_mode: boolean;
+  not_to_do: NotToDoItem[];
+  end_reminder_id: string | null;
+  task_pomodoros: { estimated: number; elapsed: number } | null;
+}
+
+/** Tell the server an adopted session is over so the bot sees nothing running. */
+function endLinkedRemoteSession(): void {
+  const { remoteLinked, remoteSessionId } = useTimerStore.getState();
+  if (!remoteLinked || !remoteSessionId) return;
+  useTimerStore.setState({ remoteLinked: false });
+  fetch('/api/timer/remote', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ session_id: remoteSessionId }),
+  }).catch((err) => console.error('[timer/remote] end failed', err));
+}
+
 export const useTimerStore = create<TimerStore>((set, get) => ({
   status: 'idle',
   mode: 'pomodoro',
@@ -142,11 +178,29 @@ export const useTimerStore = create<TimerStore>((set, get) => ({
   isBreak: false,
   loggedDistractions: [],
   breakReminderId: null,
+  remoteSessionId: null,
+  remoteLinked: false,
   remaining: POMODORO_DURATION,
   isLoaded: false,
 
   init: () => {
     if (get().isLoaded) return;
+
+    const startLoops = () => {
+      setInterval(() => {
+        const state = get();
+        if (state.status === 'running') state.tick();
+      }, 500);
+
+      // Pick up timers started from Telegram: on load, every 15s while visible, and on return to the tab/app
+      get().syncRemoteTimer();
+      setInterval(() => {
+        if (document.visibilityState === 'visible') get().syncRemoteTimer();
+      }, REMOTE_POLL_MS);
+      document.addEventListener('visibilitychange', () => {
+        if (document.visibilityState === 'visible') get().syncRemoteTimer();
+      });
+    };
 
     try {
       const raw = localStorage.getItem(LS_KEY);
@@ -179,12 +233,9 @@ export const useTimerStore = create<TimerStore>((set, get) => ({
             }).catch((e) => console.error('[timer/init] abandon fetch failed', e));
 
             localStorage.removeItem(LS_KEY);
-            set({ isLoaded: true });
-            // Setup tick interval below and return
-            setInterval(() => {
-              const state = get();
-              if (state.status === 'running') state.tick();
-            }, 500);
+            // Keep remoteSessionId so a Telegram session isn't re-adopted after the stale reset
+            set({ isLoaded: true, remoteSessionId: saved.remoteSessionId ?? null });
+            startLoops();
             return;
           }
           // ─────────────────────────────────────────────────────────────────────
@@ -224,6 +275,8 @@ export const useTimerStore = create<TimerStore>((set, get) => ({
           isBreak: saved.isBreak ?? false,
           loggedDistractions: restoredStatus === 'idle' ? [] : (saved.loggedDistractions ?? []),
           breakReminderId: saved.breakReminderId ?? null,
+          remoteSessionId: saved.remoteSessionId ?? null,
+          remoteLinked: restoredStatus === 'idle' ? false : (saved.remoteLinked ?? false),
           remaining: restoredStatus === 'idle' ? plannedDuration : remaining,
           isLoaded: true,
         });
@@ -235,13 +288,80 @@ export const useTimerStore = create<TimerStore>((set, get) => ({
       set({ isLoaded: true });
     }
 
-    // Setup tick interval
-    setInterval(() => {
-      const state = get();
-      if (state.status === 'running') {
-        state.tick();
+    startLoops();
+  },
+
+  syncRemoteTimer: async () => {
+    let timer: RemoteTimerPayload | null;
+    try {
+      const res = await fetch('/api/timer/remote', { cache: 'no-store' });
+      if (!res.ok) return; // e.g. remote_timer table not created yet
+      timer = (await res.json()).timer ?? null;
+    } catch {
+      return; // offline — try again next poll
+    }
+    const s = get();
+
+    // Stopped from Telegram while this app was running it → stop here too.
+    // The server already abandoned the block, so reset locally without calling the API.
+    if (s.remoteLinked && timer?.session_id === s.remoteSessionId && timer.status === 'ended') {
+      if (s.status === 'running' || s.status === 'paused') {
+        const wasBreak = s.isBreak;
+        set({
+          status: 'idle', elapsed: 0, duration: POMODORO_DURATION, remaining: POMODORO_DURATION,
+          blockId: null, task: null, strictMode: false, lastTick: 0, notToDoItems: [],
+          isBreak: false, loggedDistractions: [], remoteLinked: false,
+          // the bot already cancelled the break's Telegram reminder
+          breakReminderId: wasBreak ? null : s.breakReminderId,
+        });
+        if (wasBreak) scheduleNativeBreakEnd(null).catch(() => null);
+      } else {
+        set({ remoteLinked: false });
       }
-    }, 500);
+      return;
+    }
+
+    if (!timer || timer.status !== 'running' || timer.session_id === s.remoteSessionId) return;
+
+    // Never clobber a session the user is running here, or a focus session awaiting review
+    if (s.status === 'running' || s.status === 'paused') return;
+    if (s.status === 'completed' && !s.isBreak && s.blockId) return;
+
+    const overBy = timer.elapsed_seconds - timer.duration_seconds;
+    // Past its end: still offer the review for focus (same 3× window as the stale-session guard), skip old breaks
+    if (overBy >= 0 && (timer.kind === 'break' || overBy > timer.duration_seconds * 2)) {
+      set({ remoteSessionId: timer.session_id });
+      return;
+    }
+
+    releaseFinishedBreakAlert();
+    const finished = overBy >= 0;
+    const elapsed = Math.min(timer.elapsed_seconds, timer.duration_seconds);
+    const isBreak = timer.kind === 'break';
+    set({
+      status: finished ? 'completed' : 'running',
+      mode: 'pomodoro',
+      elapsed,
+      duration: timer.duration_seconds,
+      remaining: timer.duration_seconds - elapsed,
+      blockId: timer.block_id,
+      // Free-text labels (e.g. "DSA") get an empty id; /api/timer/complete stores the title instead
+      task: isBreak ? s.task : (timer.task_title ? {
+        id: timer.task_id ?? '',
+        title: timer.task_title,
+        estimated_pomodoros: timer.task_pomodoros?.estimated ?? 0,
+        elapsed_pomodoros: timer.task_pomodoros?.elapsed ?? 0,
+      } : null),
+      strictMode: timer.strict_mode,
+      lastTick: Date.now(),
+      notToDoItems: timer.not_to_do ?? [],
+      isBreak,
+      loggedDistractions: [],
+      breakReminderId: isBreak ? timer.end_reminder_id : null,
+      remoteSessionId: timer.session_id,
+      remoteLinked: !finished,
+    });
+    if (isBreak) syncBreakAlert(); // schedules the native "break over" notification too
   },
 
   tick: () => {
@@ -273,12 +393,13 @@ export const useTimerStore = create<TimerStore>((set, get) => ({
 
   startTimer: async (task, strictMode = false, notToDoItems = []) => {
     releaseFinishedBreakAlert();
+    endLinkedRemoteSession();
     try {
       const res = await fetch('/api/timer/start', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          task_id: task?.id ?? null,
+          task_id: task?.id || null,
           mode: get().mode,
           strict_mode: strictMode,
         }),
@@ -314,6 +435,7 @@ export const useTimerStore = create<TimerStore>((set, get) => ({
   // and its time_blocks row used to stay open forever, faking an "in-progress"
   // session for stats and the Telegram check-in cron. Keep breaks client-only.
   startBreak: (minutes) => {
+    endLinkedRemoteSession();
     const duration = minutes * 60;
     set({
       status: 'running',
@@ -345,6 +467,7 @@ export const useTimerStore = create<TimerStore>((set, get) => ({
   completeTimer: async (reviewData) => {
     // BUG-4: Capture all values before set() so the API call uses pre-mutation state.
     const { blockId, elapsed, task, notToDoItems, mode, duration, loggedDistractions } = get();
+    endLinkedRemoteSession();
 
     const updatedTask = task ? { ...task, elapsed_pomodoros: task.elapsed_pomodoros + (mode === 'pomodoro' ? 1 : 0) } : null;
 
@@ -375,7 +498,8 @@ export const useTimerStore = create<TimerStore>((set, get) => ({
           blockId,
           duration: elapsed,
           total_duration: duration,  // BUG-4 fix: captured before set()
-          task_id: task?.id ?? null,
+          task_id: task?.id || null,
+          task_title: task?.title ?? null, // free-text label for Telegram-started sessions
           not_to_do_selected: notToDoItems,
           triggered_distractions: finalTriggeredDistractions,
           completion_note: reviewData?.completionNote ?? null,
@@ -388,7 +512,7 @@ export const useTimerStore = create<TimerStore>((set, get) => ({
         window.dispatchEvent(new Event('dayly-refresh-tasks'));
       }
 
-      return result as { xpEarned: number; xpDeducted: number; cleanSession: boolean };
+      return result as { coinsEarned: number; coinsDeducted: number; cleanSession: boolean };
     } catch (err) {
       console.error('Failed to complete timer:', err);
       return null;
@@ -397,6 +521,7 @@ export const useTimerStore = create<TimerStore>((set, get) => ({
 
   abandonTimer: async (failedReason = 'manual_abandon') => {
     releaseFinishedBreakAlert();
+    endLinkedRemoteSession();
     const { blockId, elapsed, duration, mode } = get();
 
     const resetDuration = mode === 'pomodoro' ? POMODORO_DURATION : 0;
@@ -512,6 +637,8 @@ if (typeof window !== 'undefined') {
         isBreak: state.isBreak,
         loggedDistractions: state.loggedDistractions,
         breakReminderId: state.breakReminderId,
+        remoteSessionId: state.remoteSessionId,
+        remoteLinked: state.remoteLinked,
         _savedAt: Date.now(),
       };
       localStorage.setItem(LS_KEY, JSON.stringify(stateToSave));

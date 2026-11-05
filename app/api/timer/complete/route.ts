@@ -1,6 +1,6 @@
 import { NextResponse, after } from 'next/server';
 import { supabase } from '@/lib/supabase';
-import { addXP } from '@/lib/gamification';
+import { earnCoins } from '@/lib/gamification';
 import { notifyTelegram } from '@/lib/telegram';
 
 export async function POST(request: Request) {
@@ -11,6 +11,9 @@ export async function POST(request: Request) {
       duration,
       total_duration,   // planned session length in seconds (sent by store)
       task_id,
+      // Free-text focus label (e.g. "DSA" from a Telegram-started session) used when
+      // task_id doesn't resolve to a task/pressure task.
+      task_title: fallbackTaskTitle = null,
       // Phase 13: session review fields (all optional)
       not_to_do_selected = [],   // [{label, emoji}]
       triggered_distractions = [],
@@ -44,25 +47,25 @@ export async function POST(request: Request) {
         .eq('time_block_id', blockId)
         .single();
 
-      let xpEarned = existingReview?.xp_earned ?? 30;
-      let xpDeducted = existingReview?.xp_deducted ?? 0;
+      const coinsEarned = existingReview?.xp_earned ?? 30;
+      const coinsDeducted = existingReview?.xp_deducted ?? 0;
       const distractionCount = triggered_distractions.length;
       const hadNotToDoSelected = not_to_do_selected.length > 0;
 
-      let newXpEarned = 30;
-      let newXpDeducted = 0;
+      let newCoinsEarned = 30;
+      let newCoinsDeducted = 0;
       if (hadNotToDoSelected && distractionCount === 0) {
-        newXpEarned += 15;
+        newCoinsEarned += 15;
       } else if (distractionCount >= 2) {
-        newXpDeducted = 5;
+        newCoinsDeducted = 5;
       }
 
-      const oldNet = xpEarned - xpDeducted;
-      const newNet = newXpEarned - newXpDeducted;
+      const oldNet = coinsEarned - coinsDeducted;
+      const newNet = newCoinsEarned - newCoinsDeducted;
       const diff = newNet - oldNet;
 
       if (diff !== 0) {
-        await addXP(diff, 'Focus session review updated');
+        await earnCoins(diff, 'Focus session review updated');
       }
 
       if (existingReview) {
@@ -70,8 +73,8 @@ export async function POST(request: Request) {
           .from('session_reviews')
           .update({
             triggered_distractions,
-            xp_earned: newXpEarned,
-            xp_deducted: newXpDeducted,
+            xp_earned: newCoinsEarned,
+            xp_deducted: newCoinsDeducted,
             completion_note: completion_note ?? existingReview.completion_note,
           })
           .eq('id', existingReview.id);
@@ -87,11 +90,11 @@ export async function POST(request: Request) {
         }
         await supabase.from('session_reviews').insert({
           time_block_id: blockId,
-          task_title: taskTitle,
+          task_title: taskTitle ?? fallbackTaskTitle,
           selected_not_to_dos: not_to_do_selected,
           triggered_distractions,
-          xp_earned: newXpEarned,
-          xp_deducted: newXpDeducted,
+          xp_earned: newCoinsEarned,
+          xp_deducted: newCoinsDeducted,
           completion_note: completion_note ?? null,
           session_duration_seconds: duration ?? null,
         });
@@ -99,8 +102,8 @@ export async function POST(request: Request) {
 
       return NextResponse.json({
         success: true,
-        xpEarned: newXpEarned,
-        xpDeducted: newXpDeducted,
+        coinsEarned: newCoinsEarned,
+        coinsDeducted: newCoinsDeducted,
         cleanSession: hadNotToDoSelected && distractionCount === 0,
         message: 'Already completed, review updated',
       });
@@ -132,23 +135,24 @@ export async function POST(request: Request) {
       }
     }
 
-    // ── XP Calculation ──────────────────────────────────────────────────────
-    // Base: +30 XP for completing a focus session
-    let xpEarned = 30;
-    let xpDeducted = 0;
+    // ── Coin Calculation ────────────────────────────────────────────────────
+    // Base: +30 coins for completing a focus session.
+    // (session_reviews.xp_earned/xp_deducted columns now hold coin amounts — XP was retired.)
+    let coinsEarned = 30;
+    let coinsDeducted = 0;
 
     const distractionCount = triggered_distractions.length;
     const hadNotToDoSelected = not_to_do_selected.length > 0;
 
     if (hadNotToDoSelected && distractionCount === 0) {
       // Clean session! User committed to not-to-dos and held the line
-      xpEarned += 15;
+      coinsEarned += 15;
     } else if (distractionCount >= 2) {
       // Soft deduction — honest reporting is rewarded, but repeated slips are noted
-      xpDeducted = 5;
+      coinsDeducted = 5;
     }
 
-    await addXP(xpEarned - xpDeducted, xpDeducted > 0 ? 'Focus session (distracted)' : 'Focus session');
+    await earnCoins(coinsEarned - coinsDeducted, coinsDeducted > 0 ? 'Focus session (distracted)' : 'Focus session');
 
     // ── Save Session Review ──────────────────────────────────────────────────
     // Fetch task title for the review record
@@ -173,13 +177,15 @@ export async function POST(request: Request) {
       }
     }
 
+    taskTitle = taskTitle ?? fallbackTaskTitle;
+
     await supabase.from('session_reviews').insert({
       time_block_id: blockId,
       task_title: taskTitle,
       selected_not_to_dos: not_to_do_selected,
       triggered_distractions,
-      xp_earned: xpEarned,
-      xp_deducted: xpDeducted,
+      xp_earned: coinsEarned,
+      xp_deducted: coinsDeducted,
       completion_note: completion_note ?? null,
       session_duration_seconds: duration ?? null,
     });
@@ -205,7 +211,7 @@ export async function POST(request: Request) {
         const pomoCount = todayBlocks?.length ?? 1;
         const durationMins = Math.round((duration ?? 25 * 60) / 60);
         const cleanStr = hadNotToDoSelected && distractionCount === 0 ? ' 🏆 _Clean session!_' : '';
-        const xpStr = `+${xpEarned - xpDeducted} XP`;
+        const coinsStr = `+${coinsEarned - coinsDeducted} 🪙`;
 
         // Fetch next pending task
         const { data: nextTasks } = await supabase
@@ -223,7 +229,7 @@ export async function POST(request: Request) {
 
         const msg = [
           `🍅 *Session complete* — ${durationMins} min${taskTitle ? ` on "${taskTitle}"` : ''}`,
-          `That's *${pomoCount} session${pomoCount !== 1 ? 's' : ''}* today. ${xpStr}${cleanStr}`,
+          `That's *${pomoCount} session${pomoCount !== 1 ? 's' : ''}* today. ${coinsStr}${cleanStr}`,
           nextStr,
         ].join('\n');
 
@@ -236,8 +242,8 @@ export async function POST(request: Request) {
     // Force the tasks list to re-fetch so the Pomodoro count updates instantly
     return NextResponse.json({ 
       success: true, 
-      xpEarned, 
-      xpDeducted, 
+      coinsEarned, 
+      coinsDeducted, 
       cleanSession: hadNotToDoSelected && distractionCount === 0 
     });
   } catch (err) {

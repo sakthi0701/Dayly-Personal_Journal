@@ -426,12 +426,12 @@ export default function PressurePlan() {
         body: JSON.stringify({ status }),
       });
       const data = await res.json();
-      // Show XP feedback on completion
+      // Show coin feedback on completion
       if (status === 'done') {
         const deadline = tasks.find((t) => t.id === id)?.deadline;
         if (deadline) {
           const isOnTime = Date.now() <= new Date(deadline).getTime();
-          showToast(isOnTime ? '✅ On time! +20 XP' : '⏱ Done (late) +8 XP');
+          showToast(isOnTime ? '✅ On time! +20 coins' : '⏱ Done (late) +8 coins');
         } else {
           showToast('✅ Task complete!');
         }
@@ -479,15 +479,15 @@ export default function PressurePlan() {
       {/* Add form */}
       {showForm && <AddForm onAdd={handleAdd} onCancel={() => setShowForm(false)} goals={goals} />}
 
-      {/* XP legend */}
+      {/* Coin legend */}
       <div className="flex items-center gap-4 text-xs text-zinc-600">
         <span className="flex items-center gap-1.5">
           <span className="w-2 h-2 rounded-full bg-emerald-500" />
-          On time: +20 XP
+          On time: +20 coins
         </span>
         <span className="flex items-center gap-1.5">
           <span className="w-2 h-2 rounded-full bg-amber-500" />
-          Late: +8 XP
+          Late: +8 coins
         </span>
       </div>
 

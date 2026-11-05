@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { Plus, Search, Filter, Loader2, RefreshCw, Target, Flame, CheckSquare, Clock, Zap, Ban } from 'lucide-react';
+import { Plus, Search, Filter, Loader2, RefreshCw, Target, Flame, CheckSquare, Clock, Coins, Ban } from 'lucide-react';
 import GlobalDashboardStats from '@/components/tasks/GlobalDashboardStats';
 import TaskList from '@/components/tasks/TaskList';
 import TaskForm from '@/components/tasks/TaskForm';
@@ -44,7 +44,7 @@ function ActionPageInner() {
 
   // ── Summary strip state ───────────────────────────────────
   const [summaryStats, setSummaryStats] = useState<{
-    tasksTotal: number; tasksDue: number; activeGoals: number; habitsToday: number; streak: number; xp: number;
+    tasksTotal: number; tasksDue: number; activeGoals: number; habitsToday: number; streak: number; coins: number;
   } | null>(null);
 
   const showToast = (message: string, type: 'success' | 'error' = 'success') => {
@@ -100,7 +100,7 @@ function ActionPageInner() {
         activeGoals,
         habitsToday,
         streak: userStats.stats?.streak_days ?? 0,
-        xp: userStats.stats?.xp ?? 0,
+        coins: userStats.stats?.coins ?? 0,
       });
       triggerWidgetDataSync();
     });
@@ -205,7 +205,7 @@ function ActionPageInner() {
           <SummaryChip icon={<Target className="w-3.5 h-3.5 text-violet-400" />} label={`${summaryStats.activeGoals} active goals`} />
           <SummaryChip icon={<Flame className="w-3.5 h-3.5 text-orange-400" />} label={`${summaryStats.habitsToday} habits logged today`} />
           <SummaryChip icon={<Clock className="w-3.5 h-3.5 text-emerald-400" />} label={`${summaryStats.streak}d streak`} />
-          <SummaryChip icon={<Zap className="w-3.5 h-3.5 text-amber-400" />} label={`${summaryStats.xp} XP`} />
+          <SummaryChip icon={<Coins className="w-3.5 h-3.5 text-amber-400" />} label={`${summaryStats.coins} coins`} />
         </div>
       )}
 

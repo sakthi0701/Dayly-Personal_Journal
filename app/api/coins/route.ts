@@ -23,7 +23,6 @@ export async function GET() {
 
     return NextResponse.json({
       coins: stats.coins,
-      xp: stats.xp,
       shields: stats.shields,
       shieldsBoughtThisMonth: boughtThisMonth,
       shieldPrice: COIN_RULES.shieldBasePrice * 2 ** boughtThisMonth,
