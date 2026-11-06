@@ -10,7 +10,14 @@ import CallSettings from '@/components/settings/CallSettings';
 import { hashString } from '@/lib/security';
 
 // ── PIN Verification Modal ─────────────────────────────────────────────────────
+// With App Lock on, the wipe requires the App Lock PIN. With it off, the user must type DELETE.
+// Deliberately NO master-PIN fallback here: it was a fixed, guessable value shipped in the client
+// bundle, so it confirmed nothing. Don't reintroduce it.
+const WIPE_CONFIRM_WORD = 'DELETE';
+
 function PinVerifyModal({ onVerified, onCancel }: { onVerified: () => void; onCancel: () => void }) {
+    const [storedHash] = useState(() => localStorage.getItem('dayly_pin_hash'));
+    const hasPin = !!storedHash;
     const [pin, setPin] = useState('');
     const [showPin, setShowPin] = useState(false);
     const [error, setError] = useState('');
@@ -23,17 +30,11 @@ function PinVerifyModal({ onVerified, onCancel }: { onVerified: () => void; onCa
         setError('');
 
         try {
-            let targetHash = localStorage.getItem('dayly_pin_hash');
-            // Fall back to master PIN if no custom PIN is configured
-            if (!targetHash) {
-                targetHash = await hashString(process.env.NEXT_PUBLIC_MASTER_PIN || '2027');
-            }
-
-            const inputHash = await hashString(pin);
-            if (inputHash === targetHash) {
+            const ok = hasPin ? (await hashString(pin)) === storedHash : pin === WIPE_CONFIRM_WORD;
+            if (ok) {
                 onVerified();
             } else {
-                setError('Incorrect PIN. Operation blocked.');
+                setError(hasPin ? 'Incorrect PIN. Operation blocked.' : `Type ${WIPE_CONFIRM_WORD} exactly to confirm.`);
                 setPin('');
             }
         } finally {
@@ -59,32 +60,47 @@ function PinVerifyModal({ onVerified, onCancel }: { onVerified: () => void; onCa
                     </div>
                 </div>
 
-                <h3 className="text-lg font-bold text-white text-center mb-1">PIN Required</h3>
+                <h3 className="text-lg font-bold text-white text-center mb-1">{hasPin ? 'PIN Required' : 'Confirm Delete'}</h3>
                 <p className="text-xs text-zinc-500 text-center mb-6">
-                    Enter your PIN to authorize this irreversible action.
+                    {hasPin
+                        ? 'Enter your App Lock PIN to authorize this irreversible action.'
+                        : <>App Lock is off. Type <span className="font-mono text-red-400">{WIPE_CONFIRM_WORD}</span> to authorize this irreversible action.</>}
                 </p>
 
                 <form onSubmit={handleSubmit} className="space-y-4">
-                    <div className="relative">
+                    {hasPin ? (
+                        <div className="relative">
+                            <input
+                                type={showPin ? 'text' : 'password'}
+                                inputMode="numeric"
+                                pattern="\d*"
+                                maxLength={4}
+                                autoFocus
+                                value={pin}
+                                onChange={(e) => setPin(e.target.value.replace(/\D/g, ''))}
+                                placeholder="4-digit PIN"
+                                className="w-full bg-zinc-950 border border-zinc-700 rounded-xl px-4 py-3 text-center text-xl tracking-[1em] text-white font-mono placeholder:tracking-normal placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-red-500/50 focus:border-red-500/40 transition-all pr-12"
+                            />
+                            <button
+                                type="button"
+                                onClick={() => setShowPin(v => !v)}
+                                className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-600 hover:text-zinc-400 transition"
+                            >
+                                {showPin ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                            </button>
+                        </div>
+                    ) : (
                         <input
-                            type={showPin ? 'text' : 'password'}
-                            inputMode="numeric"
-                            pattern="\d*"
-                            maxLength={4}
+                            type="text"
                             autoFocus
+                            autoComplete="off"
+                            spellCheck={false}
                             value={pin}
-                            onChange={(e) => setPin(e.target.value.replace(/\D/g, ''))}
-                            placeholder="4-digit PIN"
-                            className="w-full bg-zinc-950 border border-zinc-700 rounded-xl px-4 py-3 text-center text-xl tracking-[1em] text-white font-mono placeholder:tracking-normal placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-red-500/50 focus:border-red-500/40 transition-all pr-12"
+                            onChange={(e) => setPin(e.target.value)}
+                            placeholder={`Type ${WIPE_CONFIRM_WORD}`}
+                            className="w-full bg-zinc-950 border border-zinc-700 rounded-xl px-4 py-3 text-center text-lg tracking-widest text-white font-mono placeholder:tracking-normal placeholder:text-zinc-600 focus:outline-none focus:ring-2 focus:ring-red-500/50 focus:border-red-500/40 transition-all"
                         />
-                        <button
-                            type="button"
-                            onClick={() => setShowPin(v => !v)}
-                            className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-600 hover:text-zinc-400 transition"
-                        >
-                            {showPin ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                        </button>
-                    </div>
+                    )}
 
                     {error && (
                         <p className="text-red-400 text-sm text-center animate-pulse">{error}</p>
@@ -92,7 +108,7 @@ function PinVerifyModal({ onVerified, onCancel }: { onVerified: () => void; onCa
 
                     <button
                         type="submit"
-                        disabled={pin.length !== 4 || loading}
+                        disabled={(hasPin ? pin.length !== 4 : pin !== WIPE_CONFIRM_WORD) || loading}
                         className="w-full py-3 bg-red-600 hover:bg-red-500 text-white font-semibold rounded-xl transition disabled:opacity-40 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                     >
                         {loading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Lock className="w-4 h-4" />}
@@ -120,6 +136,8 @@ export default function SettingsPage() {
         try {
             const res = await fetch('/api/settings/clear-data', {
                 method: 'DELETE',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ confirm: WIPE_CONFIRM_WORD }),
             });
             if (res.ok) {
                 router.refresh();
@@ -183,7 +201,7 @@ export default function SettingsPage() {
                     <div className="mt-12 pt-6 border-t border-red-500/20">
                         <h3 className="text-lg font-bold text-red-500 mb-2">Danger Zone</h3>
                         <p className="text-sm text-zinc-500 mb-6 max-w-xl">
-                            Permanently delete all of your journal entries, wipe your Active Memory timeline, and reset your streak and gamification stats back to day zero. This action cannot be undone and requires your PIN.
+                            Permanently delete all of your journal entries, wipe your Active Memory timeline, and reset your streak and gamification stats back to day zero. This action cannot be undone and requires your App Lock PIN (or typing DELETE when App Lock is off).
                         </p>
 
                         {!isConfirming ? (

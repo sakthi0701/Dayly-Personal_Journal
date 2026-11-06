@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
-import { mem0 } from '@/lib/ai/memory';
+import { mem0, searchMemories } from '@/lib/ai/memory';
 import { generateEmbedding } from '@/lib/embeddings';
 import { generateGoDeeperQuestion } from '@/lib/ai/groq';
 import { updateUserStatsOnEntry } from '@/lib/gamification';
@@ -123,7 +123,7 @@ export async function POST(request: Request) {
     // Fall back to querying recent raw entries from Supabase if mem0 returns nothing.
     let datedContext: { content: string; date: string }[] = [];
     try {
-      const searchResults = await mem0.search(cleanMessage, { userId: 'default_user', limit: 15 } as any);
+      const searchResults = await searchMemories(cleanMessage, 15);
       if (searchResults?.results && searchResults.results.length > 0) {
         datedContext = searchResults.results.map((res) => ({
           content: res.memory,

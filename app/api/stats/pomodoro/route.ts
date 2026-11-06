@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
+import { normalizeTimeZone } from '@/lib/utils/day';
 
 export const dynamic = 'force-dynamic';
 
@@ -32,10 +33,10 @@ function getHour(dateObj: Date, timeZone: string): number {
 }
 
 /**
- * GET /api/stats/pomodoro?range=7|14|30|90&tz=UTC|IST
+ * GET /api/stats/pomodoro?range=7|14|30|90&tz=<IANA zone>
  *
  * Returns focus analytics for the requested day range and timezone.
- * Defaults to 7 days and UTC if params are absent or invalid.
+ * Defaults to 7 days and DEFAULT_TIME_ZONE if params are absent or invalid.
  */
 export async function GET(request: Request) {
   try {
@@ -43,8 +44,8 @@ export async function GET(request: Request) {
     const rangeParam = parseInt(searchParams.get('range') ?? '7', 10);
     const rangeDays = [7, 14, 30, 90].includes(rangeParam) ? rangeParam : 7;
     
-    const tzParam = searchParams.get('tz') ?? 'UTC';
-    const timeZone = tzParam === 'IST' ? 'Asia/Kolkata' : 'UTC';
+    // IANA zone from the client (legacy 'IST'/'UTC' still accepted); see lib/utils/day.ts
+    const timeZone = normalizeTimeZone(searchParams.get('tz'));
 
     const now = new Date();
     const todayStr = getDateStr(now, timeZone);

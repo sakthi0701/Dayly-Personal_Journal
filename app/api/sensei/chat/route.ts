@@ -1,14 +1,16 @@
 import { NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
-import { mem0 } from '@/lib/ai/memory';
+import { searchMemories } from '@/lib/ai/memory';
 import { generateAdvice } from '@/lib/ai/groq';
 import { getUserStats } from '@/lib/gamification';
-import type { ExecutionSummary } from '@/lib/ai/groq';
+import { buildExecutionSummary } from '@/lib/stats/execution';
+import { normalizeTimeZone } from '@/lib/utils/day';
+import { EVIDENCE_MIN_SCORE, formatSourceDate, toMemorySources } from '@/lib/ai/memorySources';
 
 /**
  * POST /api/sensei/chat
  *
- * Body: { threadId?: string, message: string }
+ * Body: { threadId?: string, message: string, tz?: string (IANA zone for 'today') }
  *
  * Two-state AI logic:
  *   - If `message` is provided → treated as the user's question (Q&A mode)
@@ -68,129 +70,26 @@ export async function POST(request: Request) {
       .map((m) => `[${m.role}]: ${m.content}`)
       .join('\n');
 
-    // ── 4. Parallel: journal memories + execution data ────────────────────────
-    const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
-    const thirtyDaysAgo = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
-
-    const [
-      memResults,
-      stats,
-      taskStatsRes,
-      focusStatsRes,
-      strictStatsRes,
-      activeGoalsRes,
-      habitLogsRes,
-      sessionReviewsRes,
-    ] = await Promise.all([
-      mem0.search(message, { userId: 'default_user', limit: 6 } as any).catch(() => null),
+    // ── 4. Parallel: journal memories + execution data (shared builder, user's local day) ──
+    const timeZone = normalizeTimeZone(body.tz);
+    const [memResults, stats, executionData] = await Promise.all([
+      searchMemories(message, 6).catch((e) => { console.error('[Sensei chat] mem0 search failed:', e); return null; }),
       getUserStats(),
-
-      supabase
-        .from('tasks')
-        .select('status, estimated_pomodoros, elapsed_pomodoros, title, goal_id, updated_at')
-        .gte('updated_at', sevenDaysAgo),
-
-      supabase
-        .from('time_blocks')
-        .select('duration, completed, mode')
-        .gte('created_at', sevenDaysAgo),
-
-      supabase
-        .from('time_blocks')
-        .select('violation_count, failed_reason, task_id')
-        .eq('strict_mode', true)
-        .gte('created_at', sevenDaysAgo),
-
-      supabase
-        .from('goals')
-        .select('id, title, deadline, status, created_at')
-        .eq('status', 'active'),
-
-      supabase
-        .from('habit_logs')
-        .select('habit_id, logged_at, status, habits(name)')
-        .gte('logged_at', thirtyDaysAgo),
-
-      supabase
-        .from('session_reviews')
-        .select('triggered_distractions')
-        .gte('created_at', sevenDaysAgo),
+      buildExecutionSummary(timeZone),
     ]);
-
-    // ── 5. Build execution summary ────────────────────────────────────────────
-    const tasks = taskStatsRes.data ?? [];
-    const strictBlocks = strictStatsRes.data ?? [];
-    const activeGoals = activeGoalsRes.data ?? [];
-    const habitLogs = habitLogsRes.data ?? [];
-    const sessionReviews = sessionReviewsRes?.data ?? [];
-
-    // Suppress unused var lint — focusStatsRes fetched for future use
-    void focusStatsRes;
-
-    const totalPlanned = tasks.reduce((s, t) => s + (t.estimated_pomodoros ?? 0), 0);
-    const totalCompleted = tasks.reduce((s, t) => s + (t.elapsed_pomodoros ?? 0), 0);
-    const strictFailed = strictBlocks.filter((b) => b.failed_reason).length;
-    const tasksWithGoal = tasks.filter((t) => t.goal_id).length;
-    const alignmentPercentage = tasks.length > 0 ? Math.round((tasksWithGoal / tasks.length) * 100) : 0;
-
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const goalDeadlinesSummary = activeGoals.length === 0
-      ? 'No active goals.'
-      : activeGoals.map((g) => {
-          if (!g.deadline) return `"${g.title}" — no deadline`;
-          const daysLeft = Math.ceil((new Date(g.deadline).getTime() - today.getTime()) / 86400000);
-          return `"${g.title}" — ${daysLeft < 0 ? '⚠ OVERDUE' : `${daysLeft}d left`}`;
-        }).join('; ');
-
-    // Habit decay
-    const habitMap = new Map<string, { name: string; failCount: number }>();
-    habitLogs.forEach((log) => {
-      const name = (log.habits as unknown as { name: string } | null)?.name ?? 'Unknown';
-      if (!habitMap.has(log.habit_id)) habitMap.set(log.habit_id, { name, failCount: 0 });
-      if (log.status === 'failed' || log.status === 'skipped') {
-        habitMap.get(log.habit_id)!.failCount++;
-      }
-    });
-    const decayedHabits = [...habitMap.values()].filter((h) => h.failCount >= 3);
-    const failedHabitsSummary = decayedHabits.length > 0
-      ? decayedHabits.map((h) => `"${h.name}" failed ${h.failCount} of last 7 days`).join('; ')
-      : 'No habit decay detected.';
-
-    // Distraction triggers
-    const distractionCounts = new Map<string, number>();
-    sessionReviews.forEach((r: { triggered_distractions?: unknown }) => {
-      const list = Array.isArray(r.triggered_distractions) ? r.triggered_distractions : [];
-      list.forEach((d: { label?: string }) => {
-        if (d?.label) {
-          distractionCounts.set(d.label, (distractionCounts.get(d.label) ?? 0) + 1);
-        }
-      });
-    });
-    const topDistractions = [...distractionCounts.entries()]
-      .sort((a, b) => b[1] - a[1])
-      .slice(0, 4)
-      .map(([label, count]) => `${label} (${count}×)`)
-      .join(', ');
-    const distractionsSummary = topDistractions
-      ? `Frequent distraction triggers (last 7 days): ${topDistractions}`
-      : 'No distraction triggers recorded.';
-
-    const executionData: ExecutionSummary = {
-      totalPlanned, totalCompleted, strictFailed,
-      alignmentPercentage, goalDeadlinesSummary, failedHabitsSummary,
-      distractionsSummary,
-    };
+    const memorySources = await toMemorySources(memResults?.results ?? [], timeZone);
 
     // ── 6. Build augmented question with thread context ───────────────────────
     const augmentedQuestion = threadContext
       ? `[Recent conversation context]\n${threadContext}\n\n[New question]\n${message}`
       : message;
 
-    // ── 7. Journal memories ────────────────────────────────────────────────────
-    const safeEntries = memResults?.results?.length
-      ? memResults.results.map((r) => ({ content: r.memory }))
-      : [];
+    // ── 7. Journal memories, dated so the model can cite which entry it used ──
+    const safeEntries = memorySources.map((m) => ({ content: `[journal entry ${formatSourceDate(m.date)}] ${m.fact}` }));
+    // What the UI shows as "Sensei remembered" — on-topic facts only, one per entry
+    const sources = memorySources
+      .filter((m) => m.score >= EVIDENCE_MIN_SCORE)
+      .filter((m, i, all) => all.findIndex((x) => x.entryId === m.entryId) === i);
 
     // ── 8. Generate response (two-state: Q&A vs Autonomous Insight) ───────────
     const advice = await generateAdvice(
@@ -205,7 +104,7 @@ export async function POST(request: Request) {
       thread_id: threadId,
       role: 'assistant',
       content: advice,
-      metadata: { executionSummary: executionData },
+      metadata: { executionSummary: executionData, sources },
     });
 
     // Update thread last_message_at
@@ -214,7 +113,7 @@ export async function POST(request: Request) {
       .update({ last_message_at: new Date().toISOString() })
       .eq('id', threadId);
 
-    return NextResponse.json({ advice, threadId, executionData });
+    return NextResponse.json({ advice, threadId, executionData, sources });
   } catch (err) {
     console.error('[POST /api/sensei/chat]', err);
     return NextResponse.json({ error: 'Failed to generate Sensei response' }, { status: 500 });

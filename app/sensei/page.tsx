@@ -10,10 +10,15 @@ import {
   PlayCircle, X, BarChart2, ChevronRight,
 } from 'lucide-react';
 import SunWarrior from '@/components/gamification/SunWarrior';
+import { getUserTimeZone } from '@/lib/utils/userTimeZone';
+import { formatDayLabel } from '@/lib/utils/day';
+import Link from 'next/link';
 
 // ── Types ────────────────────────────────────────────────────────────────────
 interface Thread { id: string; title: string | null; last_message_at: string; created_at: string; }
-interface Message { id: string; role: 'user' | 'assistant'; content: string; created_at: string; }
+interface Source { entryId: string; date: string; fact: string }
+interface Message { id: string; role: 'user' | 'assistant'; content: string; created_at: string; sources?: Source[] }
+type StoredMessage = Omit<Message, 'sources'> & { metadata?: { sources?: Source[] } | null };
 interface AnalyticsData {
   totalFocusMinutes: number;
   todayFocusMinutes: number;
@@ -76,7 +81,7 @@ export default function SenseiPage() {
   // ── Data loading ─────────────────────────────────────────────────────────────
   const loadAnalytics = useCallback((range: ChartRange) => {
     const t = Date.now();
-    const tz = (typeof window !== 'undefined' ? localStorage.getItem('dayly_timezone') : null) ?? 'UTC';
+    const tz = encodeURIComponent(getUserTimeZone());
     fetch(`/api/stats/pomodoro?range=${range}&tz=${tz}&t=${t}`).then(r => r.json()).then(setAnalytics).catch(() => null);
   }, []);
 
@@ -127,7 +132,7 @@ export default function SenseiPage() {
     try {
       const res = await fetch('/api/sensei/chat', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: text, threadId: currentThreadId }),
+        body: JSON.stringify({ message: text, threadId: currentThreadId, tz: getUserTimeZone() }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error);
@@ -135,7 +140,7 @@ export default function SenseiPage() {
         setCurrentThreadId(data.threadId);
         fetch('/api/sensei/threads').then(r => r.json()).then(d => setThreads(d.threads ?? [])).catch(() => null);
       }
-      setMessages(prev => [...prev, { id: (Date.now() + 1).toString(), role: 'assistant', content: data.advice, created_at: new Date().toISOString() }]);
+      setMessages(prev => [...prev, { id: (Date.now() + 1).toString(), role: 'assistant', content: data.advice, created_at: new Date().toISOString(), sources: data.sources ?? [] }]);
     } catch {
       setMessages(prev => [...prev, { id: (Date.now() + 1).toString(), role: 'assistant', content: 'Something went wrong. Please try again.', created_at: new Date().toISOString() }]);
     } finally { setLoading(false); }
@@ -149,7 +154,7 @@ export default function SenseiPage() {
     try {
       const res = await fetch(`/api/sensei/threads/${id}`);
       const data = await res.json();
-      if (data.messages) { setMessages(data.messages); setCurrentThreadId(id); setShowHistory(false); }
+      if (data.messages) { setMessages((data.messages as StoredMessage[]).map(({ metadata, ...m }) => ({ ...m, sources: metadata?.sources ?? [] }))); setCurrentThreadId(id); setShowHistory(false); }
     } catch { /* silent */ }
   };
 
@@ -344,12 +349,13 @@ export default function SenseiPage() {
             {messages.length > 0 && (
               <div className="flex-1 space-y-3 max-h-80 overflow-y-auto pr-1 scrollbar-none">
                 {messages.map(msg => (
-                  <div key={msg.id} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
+                  <div key={msg.id} className={`flex flex-col ${msg.role === 'user' ? 'items-end' : 'items-start'}`}>
                     <div className={`max-w-[88%] px-4 py-2.5 rounded-2xl text-sm leading-relaxed ${
                       msg.role === 'user'
                         ? 'bg-indigo-600/30 border border-indigo-500/30 text-zinc-200'
                         : 'bg-zinc-950/80 border border-zinc-800 text-zinc-300 font-serif'
                     }`}>{msg.content}</div>
+                    {msg.sources && msg.sources.length > 0 && <SourcesLine sources={msg.sources} />}
                   </div>
                 ))}
                 {loading && (
@@ -456,6 +462,23 @@ export default function SenseiPage() {
 }
 
 // ── Sub-components ─────────────────────────────────────────────────────────────
+/** "Sensei remembered: Nov 5, 2026 · …" — links to the journal entries the answer drew on. */
+function SourcesLine({ sources }: { sources: Source[] }) {
+  return (
+    <p className="mt-1 ml-1 max-w-[88%] text-[11px] text-zinc-400">
+      Sensei remembered:{' '}
+      {sources.map((s, i) => (
+        <span key={s.entryId}>
+          {i > 0 && ' · '}
+          <Link href={`/entries/${s.entryId}/edit`} title={s.fact} className="underline underline-offset-2 hover:text-zinc-200">
+            {formatDayLabel(s.date)}
+          </Link>
+        </span>
+      ))}
+    </p>
+  );
+}
+
 function KPICard({ icon: Icon, label, value, color }: { icon: React.ElementType; label: string; value: string; color: string }) {
   return (
     <div className="bg-zinc-900 border border-zinc-800 rounded-2xl p-4">

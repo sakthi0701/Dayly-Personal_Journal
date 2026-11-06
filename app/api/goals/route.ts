@@ -1,9 +1,12 @@
 import { NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
+import { enrichGoal } from '@/lib/stats/goals';
+import { localDateStr, normalizeTimeZone } from '@/lib/utils/day';
 
 export const dynamic = 'force-dynamic';
 
-export async function GET() {
+/** GET /api/goals?tz=<IANA zone> — days_remaining is counted from the user's local today. */
+export async function GET(request: Request) {
   try {
     const { data: goals, error } = await supabase
       .from('goals')
@@ -13,25 +16,9 @@ export async function GET() {
 
     if (error) throw error;
 
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-
-    const enriched = (goals || []).map((g) => {
-      // Use stored counters for delete-safe progress.
-      // completed_task_count/total_task_count are incremented on task create/done,
-      // never decremented on delete — so progress survives task cleanup.
-      const total = g.total_task_count ?? 0;
-      const completed = g.completed_task_count ?? 0;
-      const progressPct = total > 0 ? Math.round((completed / total) * 100) : 0;
-
-      if (!g.deadline) return { ...g, days_remaining: null, progress_pct: progressPct };
-
-      const deadline = new Date(g.deadline);
-      deadline.setHours(0, 0, 0, 0);
-      const daysRemaining = Math.ceil((deadline.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
-
-      return { ...g, days_remaining: daysRemaining, progress_pct: progressPct };
-    });
+    const tz = normalizeTimeZone(new URL(request.url).searchParams.get('tz'));
+    const todayStr = localDateStr(new Date(), tz);
+    const enriched = (goals || []).map((g) => enrichGoal(g, todayStr, tz));
 
     return NextResponse.json({ goals: enriched });
   } catch (err) {

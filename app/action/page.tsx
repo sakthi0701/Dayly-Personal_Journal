@@ -12,6 +12,9 @@ import NotToDoLibrary from '@/components/action/NotToDoLibrary';
 import PressurePlan from '@/components/action/PressurePlan';
 import type { Task } from '@/components/tasks/TaskCard';
 import { triggerWidgetDataSync } from '@/lib/cache';
+import { localDateStr } from '@/lib/utils/day';
+import { getUserTimeZone } from '@/lib/utils/userTimeZone';
+import type { TaskSummary } from '@/lib/stats/tasks';
 
 type FilterStatus = 'all' | 'todo' | 'in-progress' | 'done';
 type Segment = 'tasks' | 'goals-habits' | 'not-to-do' | 'pressure';
@@ -44,7 +47,7 @@ function ActionPageInner() {
 
   // ── Summary strip state ───────────────────────────────────
   const [summaryStats, setSummaryStats] = useState<{
-    tasksTotal: number; tasksDue: number; activeGoals: number; habitsToday: number; streak: number; coins: number;
+    tasksDueToday: number; tasksOverdue: number; activeGoals: number; habitsToday: number; streak: number; coins: number;
   } | null>(null);
 
   const showToast = (message: string, type: 'success' | 'error' = 'success') => {
@@ -82,21 +85,24 @@ function ActionPageInner() {
   // Load summary strip data
   useEffect(() => {
     const t = Date.now();
+    const tz = getUserTimeZone();
     Promise.all([
-      fetch(`/api/stats/dashboard?t=${t}`).then(r => r.json()).catch(() => ({})),
-      fetch(`/api/goals?t=${t}`).then(r => r.json()).catch(() => ({ goals: [] })),
+      fetch(`/api/stats/dashboard?tz=${encodeURIComponent(tz)}&t=${t}`).then(r => r.json()).catch(() => ({})),
+      fetch(`/api/goals?tz=${encodeURIComponent(tz)}&t=${t}`).then(r => r.json()).catch(() => ({ goals: [] })),
       fetch(`/api/habits?t=${t}`).then(r => r.json()).catch(() => ({ habits: [] })),
       fetch(`/api/stats/user?t=${t}`).then(r => r.json()).catch(() => ({ stats: null })),
     ]).then(([dashStats, goalsData, habitsData, userStats]) => {
-      const today = new Date().toISOString().slice(0, 10);
+      // Local day, not UTC: habit_logs.logged_at is a local YYYY-MM-DD date.
+      const today = localDateStr(new Date(), tz);
       const habitsToday = (habitsData.habits ?? []).filter((h: { habit_logs?: { logged_at: string }[] }) =>
         (h.habit_logs ?? []).some((l: { logged_at: string }) => l.logged_at.slice(0, 10) === today)
       ).length;
       const activeGoals = (goalsData.goals ?? []).filter((g: { status: string }) => g.status === 'active').length;
-      const tasksDue = (dashStats.taskCounts?.todo ?? 0) + (dashStats.taskCounts?.inProgress ?? 0);
+      // Shared summary from the API (was reading a non-existent `taskCounts` field → always 0).
+      const summary: TaskSummary | undefined = dashStats.summary;
       setSummaryStats({
-        tasksTotal: dashStats.taskCounts?.total ?? 0,
-        tasksDue,
+        tasksDueToday: summary?.dueToday ?? 0,
+        tasksOverdue: summary?.overdue ?? 0,
         activeGoals,
         habitsToday,
         streak: userStats.stats?.streak_days ?? 0,
@@ -218,7 +224,10 @@ function ActionPageInner() {
       {/* ── Compact summary strip ── */}
       {summaryStats && (
         <div className="px-6 py-2 border-b border-zinc-800/40 flex items-center gap-4 overflow-x-auto bg-zinc-950/80 backdrop-blur-sm text-xs text-zinc-500 scrollbar-none">
-          <SummaryChip icon={<CheckSquare className="w-3.5 h-3.5 text-indigo-400" />} label={`${summaryStats.tasksDue} tasks due`} />
+          <SummaryChip icon={<CheckSquare className="w-3.5 h-3.5 text-indigo-400" />} label={`${summaryStats.tasksDueToday} due today`} />
+          {summaryStats.tasksOverdue > 0 && (
+            <SummaryChip icon={<CheckSquare className="w-3.5 h-3.5 text-rose-400" />} label={`${summaryStats.tasksOverdue} overdue`} />
+          )}
           <SummaryChip icon={<Target className="w-3.5 h-3.5 text-violet-400" />} label={`${summaryStats.activeGoals} active goals`} />
           <SummaryChip icon={<Flame className="w-3.5 h-3.5 text-orange-400" />} label={`${summaryStats.habitsToday} habits logged today`} />
           <SummaryChip icon={<Clock className="w-3.5 h-3.5 text-emerald-400" />} label={`${summaryStats.streak}d streak`} />

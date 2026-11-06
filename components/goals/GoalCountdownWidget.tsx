@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { Target, Plus, CheckCircle2, Trash2, Loader2, Flag, X, Pencil, Check } from 'lucide-react';
+import { getUserTimeZone } from '@/lib/utils/userTimeZone';
 
 interface Goal {
   id: string;
@@ -27,7 +28,7 @@ export default function GoalCountdownWidget() {
 
   const fetchGoals = async () => {
     try {
-      const res = await fetch('/api/goals');
+      const res = await fetch(`/api/goals?tz=${encodeURIComponent(getUserTimeZone())}`);
       const data = await res.json();
       setGoals(data.goals?.filter((g: Goal) => g.status === 'active') ?? []);
     } catch (err) {

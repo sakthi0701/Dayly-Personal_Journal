@@ -6,15 +6,9 @@ const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-export interface ExecutionSummary {
-  totalPlanned: number;
-  totalCompleted: number;
-  strictFailed: number;
-  alignmentPercentage: number;
-  goalDeadlinesSummary: string;
-  failedHabitsSummary: string;
-  distractionsSummary?: string;
-}
+// Built by lib/stats/execution.ts — the same numbers the Overview/Action/goal screens show.
+export type { ExecutionSummary } from '@/lib/stats/execution';
+import type { ExecutionSummary } from '@/lib/stats/execution';
 
 // ── Read User Context ──────────────────────────────────────────────────────────
 function getUserContext(): string {
@@ -86,10 +80,12 @@ ${getUserContext()}
 
 BACKGROUND CONTEXT:
 - Journal entries: ${stats?.total_entries ?? 0} | Streak: ${stats?.streak_days ?? 0} days 
-- Work Execution: Planned: ${executionData?.totalPlanned ?? 0}, Completed: ${executionData?.totalCompleted ?? 0}
-- Goal Alignment: ${executionData?.alignmentPercentage ?? 0}%
-- Strict Mode Failures: ${executionData?.strictFailed ?? 0}
-- Impending Deadlines: ${executionData?.goalDeadlinesSummary ?? 'No active goals.'}
+- Today (user's local date): ${executionData?.today ?? 'unknown'}
+- Tasks: ${executionData ? `${executionData.tasks.dueToday} due today, ${executionData.tasks.overdue} overdue, ${executionData.tasks.done} of ${executionData.tasks.total} tasks done overall` : 'no data'}
+- Focus (pomodoros, NOT tasks) over the last 7 days: ${executionData ? `${executionData.pomodorosCompleted7d} completed of ${executionData.pomodorosEstimated7d} estimated` : 'no data'}
+- Tasks worked on in the last 7 days that are linked to a goal: ${executionData ? `${executionData.goalLinkedTasks7d} of ${executionData.tasksTouched7d}` : 'no data'}
+- Strict-mode focus sessions failed (last 7 days): ${executionData ? `${executionData.strictFailed} of ${executionData.strictTotal}` : 'no data'}
+- Goals (progress = share of the goal's tasks done): ${executionData?.goalsSummary ?? 'No active goals.'}
 - Habit Decay: ${executionData?.failedHabitsSummary ?? 'No habit decay detected.'}
 - Distraction Triggers: ${executionData?.distractionsSummary ?? 'No distraction triggers recorded.'}
 

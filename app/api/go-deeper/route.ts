@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { mem0 } from '@/lib/ai/memory';
+import { searchMemories } from '@/lib/ai/memory';
 import { supabase } from '@/lib/supabase';
 import { generateGoDeeperQuestion } from '@/lib/ai/groq';
 import { toRelativeDate } from '@/lib/utils/date';
@@ -18,10 +18,7 @@ export async function POST(req: Request) {
         type ContextEntry = { content: string; date: string };
         let semanticEntries: ContextEntry[] = [];
         try {
-            const searchResults = await mem0.search(
-                content || 'general reflections on life',
-                { userId: 'default_user', limit: 12 } as any
-            );
+            const searchResults = await searchMemories(content || 'general reflections on life', 12);
             if (searchResults?.results?.length > 0) {
                 semanticEntries = searchResults.results
                     .map(res => ({

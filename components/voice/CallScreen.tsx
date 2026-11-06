@@ -285,12 +285,9 @@ function InCallView({ onFinished }: { onFinished: () => void }) {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: 'smooth' });
   }, [lines]);
 
-  // Auto-close the "call ended" card
-  useEffect(() => {
-    if (status !== 'ended') return;
-    const id = setTimeout(onFinished, 6000);
-    return () => clearTimeout(id);
-  }, [status, onFinished]);
+  // NOTE: the "call ended" card intentionally does NOT auto-close. A 6s auto-close used to remove
+  // the overlay right as the user went to press Close, so the click landed on the page beneath
+  // (on /settings that is "Clear My Data"). Don't reintroduce a timer here.
 
   const getLevels = useCallback(() => {
     const l = callRef.current?.getLevels() ?? { mic: 0, speaker: 0 };

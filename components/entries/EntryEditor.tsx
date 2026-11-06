@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { ArrowLeft, Save, Loader2, Waves, Sparkles } from 'lucide-react'
 import Link from 'next/link'
@@ -41,6 +41,15 @@ export default function EntryEditor({
     const [showSuccess, setShowSuccess] = useState(false)
     const [hasOnboarded, setHasOnboarded] = useState<boolean>(hasOnboardedProp)
     const [editorReady, setEditorReady] = useState(false)
+
+    // ── Local draft autosave ──────────────────────────────────────────────────
+    // Drafts are kept in localStorage, NOT autosaved to the server: a server save creates/updates
+    // the entry, which triggers mem0 ingestion + coin/streak rewards on every pause in typing.
+    const draftKey = `dayly_entry_draft_${entryId ?? 'new'}`
+    const [draftChecked, setDraftChecked] = useState(false)
+    const [restoredAt, setRestoredAt] = useState<number | null>(null)
+    const [uploaderKey, setUploaderKey] = useState(0) // remounts ImageUploader when a draft swaps its image
+    const savedRef = useRef(false)
 
     // Sync state if prop changes
     useEffect(() => {
@@ -109,6 +118,65 @@ export default function EntryEditor({
         }
     }, [editorReady, editor, entryId, initialContent, hasOnboarded]);
 
+    // Empty tiptap docs serialize as "<p></p>", so compare against the editor's emptiness too.
+    const isDirty = !showSuccess && (
+        (content !== initialContent && !(editor?.isEmpty && !initialContent)) ||
+        mood !== initialMood ||
+        imageUrl !== initialImageUrl
+    )
+
+    // Restore an unsaved draft once the editor exists
+    useEffect(() => {
+        if (!editorReady || !editor || draftChecked) return
+        try {
+            const raw = localStorage.getItem(draftKey)
+            const d = raw ? JSON.parse(raw) as { content?: string; mood?: string | null; imageUrl?: string | null; savedAt?: number } : null
+            if (d && (d.content !== initialContent || d.mood !== initialMood || d.imageUrl !== initialImageUrl)) {
+                if (d.content) { editor.commands.setContent(d.content); setContent(d.content) }
+                if (d.mood !== undefined) setMood(d.mood)
+                if (d.imageUrl !== undefined) { setImageUrl(d.imageUrl); setUploaderKey(k => k + 1) }
+                setRestoredAt(d.savedAt ?? Date.now())
+            }
+        } catch { /* corrupt or blocked storage: start clean */ }
+        setDraftChecked(true)
+    }, [editorReady, editor, draftChecked, draftKey, initialContent, initialMood, initialImageUrl])
+
+    // Autosave (debounced). Only after the restore check, or the empty first render would wipe the draft.
+    useEffect(() => {
+        if (!draftChecked || savedRef.current) return
+        const id = setTimeout(() => {
+            try {
+                if (isDirty) localStorage.setItem(draftKey, JSON.stringify({ content, mood, imageUrl, savedAt: Date.now() }))
+                else localStorage.removeItem(draftKey)
+            } catch { /* storage full/blocked: the leave prompt still protects the text */ }
+        }, 800)
+        return () => clearTimeout(id)
+    }, [content, mood, imageUrl, isDirty, draftChecked, draftKey])
+
+    // Warn on tab close / refresh with unsaved changes
+    useEffect(() => {
+        if (!isDirty) return
+        const onBeforeUnload = (e: BeforeUnloadEvent) => { e.preventDefault(); e.returnValue = '' }
+        window.addEventListener('beforeunload', onBeforeUnload)
+        return () => window.removeEventListener('beforeunload', onBeforeUnload)
+    }, [isDirty])
+
+    const discardDraft = () => {
+        try { localStorage.removeItem(draftKey) } catch { /* ignore */ }
+        editor?.commands.setContent(initialContent)
+        setContent(initialContent)
+        setMood(initialMood)
+        setImageUrl(initialImageUrl)
+        setUploaderKey(k => k + 1)
+        setRestoredAt(null)
+    }
+
+    const handleBack = (e: React.MouseEvent) => {
+        if (isDirty && !window.confirm('You have unsaved changes. Leave anyway?\n\nYour draft stays on this device and will be restored when you come back.')) {
+            e.preventDefault()
+        }
+    }
+
     const handleTranscription = (text: string) => {
         if (!editor) return;
         editor.chain().focus().insertContent(`<p>${text}</p>`).run();
@@ -154,6 +222,8 @@ export default function EntryEditor({
         try {
             await onSaveAction(content, mood, imageUrl);
 
+            savedRef.current = true
+            try { localStorage.removeItem(draftKey) } catch { /* ignore */ }
             setShowSuccess(true)
             setTimeout(() => {
                 router.push('/entries')
@@ -171,7 +241,7 @@ export default function EntryEditor({
         <div className="min-h-screen bg-zinc-950 text-zinc-100 p-6 flex flex-col items-center">
             <div className="w-full max-w-2xl">
                 <header className="flex items-center justify-between mb-8">
-                    <Link href="/entries" className="text-zinc-400 hover:text-white transition-colors">
+                    <Link href="/entries" onClick={handleBack} className="text-zinc-400 hover:text-white transition-colors">
                         <ArrowLeft className="w-6 h-6" />
                     </Link>
                     <div className="flex items-center gap-2">
@@ -200,6 +270,15 @@ export default function EntryEditor({
                     </div>
                 </header>
 
+                {restoredAt && (
+                    <div className="mb-4 flex items-center justify-between gap-3 px-4 py-2.5 rounded-xl border border-amber-500/25 bg-amber-500/10 text-sm text-amber-200">
+                        <span>Restored your unsaved draft from {new Date(restoredAt).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })}.</span>
+                        <button onClick={discardDraft} className="text-xs font-medium text-amber-300 hover:text-white underline underline-offset-2">
+                            Discard draft
+                        </button>
+                    </div>
+                )}
+
                 <MoodSelector selectedMood={mood} onSelect={setMood} />
 
                 <div className="w-full mt-4">
@@ -211,6 +290,7 @@ export default function EntryEditor({
             <div className="fixed bottom-8 left-1/2 -translate-x-1/2 z-50">
                 <div className="bg-zinc-900/90 backdrop-blur-md border border-zinc-800 rounded-full shadow-2xl flex items-center gap-2 p-2">
                     <ImageUploader
+                        key={uploaderKey}
                         onUploadComplete={setImageUrl}
                         initialImage={imageUrl}
                         onRemove={() => setImageUrl(null)}

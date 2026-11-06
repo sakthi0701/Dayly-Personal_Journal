@@ -1,41 +1,74 @@
 'use client';
 
-import { useState, useMemo } from 'react';
+import { useState, useEffect } from 'react';
 import Link from 'next/link';
 import { Search, Loader2 } from 'lucide-react';
 import DeleteEntryButton from './DeleteEntryButton';
+import type { MatchReason } from '@/lib/search/journal';
 
 interface Entry {
     id: string;
     created_at: string;
     content: string;
-    mood?: string;
-    image_url?: string;
+    mood?: string | null;
+    image_url?: string | null;
+    reasons?: MatchReason[];
 }
 
 interface EntriesListProps {
     initialEntries: Entry[];
 }
 
+const SEARCH_DEBOUNCE_MS = 400;
+
+function ReasonChips({ reasons }: { reasons: MatchReason[] }) {
+    return (
+        <div className="mb-2 flex flex-wrap gap-1.5 text-[11px]">
+            {reasons.map((r, i) => (
+                <span key={i} className="px-2 py-0.5 rounded-full border border-zinc-700 bg-zinc-900 text-zinc-300 max-w-full truncate">
+                    {r.kind === 'keyword' ? `Mentions: ${r.terms.join(', ')}`
+                        : r.kind === 'memory' ? `Remembered: ${r.fact}`
+                        : 'Similar in meaning'}
+                </span>
+            ))}
+        </div>
+    );
+}
+
 export default function EntriesList({ initialEntries }: EntriesListProps) {
     const [searchQuery, setSearchQuery] = useState('');
+    const [results, setResults] = useState<Entry[] | null>(null); // null = show full timeline
     const [isSearching, setIsSearching] = useState(false);
+    const [searchError, setSearchError] = useState(false);
 
-    const filteredEntries = useMemo(() => {
-        if (!searchQuery.trim()) return initialEntries;
-
-        const lowerQuery = searchQuery.toLowerCase();
-        return initialEntries.filter(entry =>
-            entry.content.toLowerCase().includes(lowerQuery)
-        );
-    }, [initialEntries, searchQuery]);
+    // Hybrid search (keyword + memory + meaning) runs server-side; see lib/search/journal.ts
+    useEffect(() => {
+        const q = searchQuery.trim();
+        if (q.length < 2) return;
+        const controller = new AbortController();
+        const id = setTimeout(async () => {
+            setIsSearching(true);
+            setSearchError(false);
+            try {
+                const res = await fetch(`/api/entries/search?q=${encodeURIComponent(q)}`, { signal: controller.signal });
+                if (!res.ok) throw new Error(String(res.status));
+                setResults((await res.json()).results ?? []);
+            } catch (e) {
+                if ((e as Error).name !== 'AbortError') setSearchError(true);
+            } finally {
+                if (!controller.signal.aborted) setIsSearching(false);
+            }
+        }, SEARCH_DEBOUNCE_MS);
+        return () => { clearTimeout(id); controller.abort(); };
+    }, [searchQuery]);
 
     const handleSearchChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        setIsSearching(true);
-        setSearchQuery(e.target.value);
-        // Fake a small delay for UI responsiveness feel
-        setTimeout(() => setIsSearching(false), 300);
+        const value = e.target.value;
+        setSearchQuery(value);
+        if (value.trim().length < 2) { setResults(null); setIsSearching(false); setSearchError(false); }
     };
+
+    const filteredEntries = results ?? initialEntries;
 
     return (
         <div className="space-y-8">
@@ -46,7 +79,7 @@ export default function EntriesList({ initialEntries }: EntriesListProps) {
                 </div>
                 <input
                     type="text"
-                    placeholder="Search past entries..."
+                    placeholder="Search by word or meaning, e.g. times I felt like procrastinating"
                     value={searchQuery}
                     onChange={handleSearchChange}
                     className="block w-full pl-10 pr-12 py-3 bg-zinc-900/50 border border-zinc-800 rounded-xl leading-5 text-zinc-300 placeholder-zinc-500 focus:outline-none focus:bg-zinc-900 focus:ring-1 focus:ring-indigo-500/50 focus:border-indigo-500/50 sm:text-sm transition-all"
@@ -57,6 +90,11 @@ export default function EntriesList({ initialEntries }: EntriesListProps) {
                     </div>
                 )}
             </div>
+
+            {results && !isSearching && results.length > 0 && (
+                <p className="text-xs text-zinc-400 -mt-4">Best matches for &ldquo;{searchQuery.trim()}&rdquo;, most relevant first</p>
+            )}
+            {searchError && <p className="text-xs text-rose-400 -mt-4">Search failed. Try again in a moment.</p>}
 
             {/* Entries Timeline */}
             <div className="space-y-8">
@@ -95,6 +133,7 @@ export default function EntriesList({ initialEntries }: EntriesListProps) {
                                 </span>
                             )}
                         </div>
+                        {entry.reasons && entry.reasons.length > 0 && <ReasonChips reasons={entry.reasons} />}
                         {entry.image_url && (
                             <div className="my-4">
                                 <img
@@ -113,8 +152,8 @@ export default function EntriesList({ initialEntries }: EntriesListProps) {
 
                 {filteredEntries.length === 0 && (
                     <div className="text-center py-20 text-zinc-600">
-                        {searchQuery ? (
-                            <p>No memories match '{searchQuery}'.</p>
+                        {results ? (
+                            <p>No memories match &lsquo;{searchQuery.trim()}&rsquo;.</p>
                         ) : (
                             <>
                                 <p>No memories yet.</p>

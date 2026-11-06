@@ -18,7 +18,7 @@ import fs from 'fs';
 import path from 'path';
 import { supabase } from '@/lib/supabase';
 import { generateGoDeeperQuestion } from '@/lib/ai/groq';
-import { mem0 } from '@/lib/ai/memory';
+import { mem0, searchMemories } from '@/lib/ai/memory';
 import { generateEmbedding } from '@/lib/embeddings';
 import { stripHtml } from '@/lib/utils/text';
 import { toRelativeDate } from '@/lib/utils/date';
@@ -206,7 +206,7 @@ async function processJournal(content: string): Promise<{ entryId: string; goDee
   // Fetch Mem0 context for Go Deeper question
   let datedContext: { content: string; date: string }[] = [];
   try {
-    const searchResults = await mem0.search(content, { userId: 'default_user', limit: 15 } as any);
+    const searchResults = await searchMemories(content, 15);
     if (searchResults?.results?.length > 0) {
       datedContext = searchResults.results.map((res: { memory: string; createdAt?: string }) => ({
         content: res.memory,

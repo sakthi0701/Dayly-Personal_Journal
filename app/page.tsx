@@ -7,6 +7,9 @@ import {
   ArrowRight, CheckSquare, Circle, AlertCircle,
   Clock, Loader2,
 } from 'lucide-react';
+import { greeting, localDateStr, localHour, toLocalDateStr } from '@/lib/utils/day';
+import { getUserTimeZone } from '@/lib/utils/userTimeZone';
+import { daysUntil } from '@/lib/stats/tasks';
 
 // ── Types ──────────────────────────────────────────────────────────────────────
 interface Habit {
@@ -36,28 +39,19 @@ interface Goal {
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
+// All day logic goes through lib/utils/day with the user's zone (Settings → Timezone).
 function getGreeting(): string {
-  const h = new Date().getHours();
-  if (h < 12) return 'Good morning Sakthi.';
-  if (h < 17) return 'Good afternoon Sakthi.';
-  if (h < 21) return 'Good evening Sakthi.';
-  return 'Still at it.';
+  return greeting(localHour(new Date(), getUserTimeZone()), 'Sakthi');
 }
 
 function formatDate(): string {
   return new Date().toLocaleDateString('en-US', {
-    weekday: 'long', day: 'numeric', month: 'long',
+    weekday: 'long', day: 'numeric', month: 'long', timeZone: getUserTimeZone(),
   });
 }
 
 function getTodayStr(): string {
-  const tz = (typeof window !== 'undefined' ? localStorage.getItem('dayly_timezone') : null) ?? 'UTC';
-  const timeZone = tz === 'IST' ? 'Asia/Kolkata' : 'UTC';
-  try {
-    return new Intl.DateTimeFormat('en-CA', { timeZone, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date());
-  } catch {
-    return new Date().toISOString().slice(0, 10);
-  }
+  return localDateStr(new Date(), getUserTimeZone());
 }
 
 function isLoggedToday(logs: { logged_at: string }[]): boolean {
@@ -67,11 +61,7 @@ function isLoggedToday(logs: { logged_at: string }[]): boolean {
 
 function deadlineLabel(dateStr: string | null): { label: string; urgent: boolean } {
   if (!dateStr) return { label: 'No deadline', urgent: false };
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  const d = new Date(dateStr);
-  d.setHours(0, 0, 0, 0);
-  const diff = Math.ceil((d.getTime() - today.getTime()) / 86400000);
+  const diff = daysUntil(toLocalDateStr(dateStr, getUserTimeZone()), getTodayStr());
   if (diff < 0) return { label: 'Overdue', urgent: true };
   if (diff === 0) return { label: 'Due today', urgent: true };
   if (diff === 1) return { label: 'Tomorrow', urgent: false };
@@ -187,8 +177,18 @@ export default function CommandCenter() {
   const [goals, setGoals] = useState<Goal[]>([]);
   const [goalsLoading, setGoalsLoading] = useState(true);
 
+  // Greeting/date are computed after mount in the user's zone. This page is prerendered at build
+  // time, so rendering them during SSR showed the build server's hour (UTC) until a re-render.
+  const [header, setHeader] = useState<{ greeting: string; date: string } | null>(null);
+  useEffect(() => {
+    const update = () => setHeader({ greeting: getGreeting(), date: formatDate() });
+    update();
+    const id = setInterval(update, 60_000);
+    return () => clearInterval(id);
+  }, []);
+
   const load = useCallback(async () => {
-    const tz = (typeof window !== 'undefined' ? localStorage.getItem('dayly_timezone') : null) ?? 'UTC';
+    const tz = encodeURIComponent(getUserTimeZone());
     const t = Date.now();
 
     // Focus + streak (parallel, non-blocking)
@@ -235,7 +235,7 @@ export default function CommandCenter() {
       .finally(() => setTasksLoading(false));
 
     // Goals (active, sorted by deadline)
-    fetch(`/api/goals?t=${t}`)
+    fetch(`/api/goals?tz=${tz}&t=${t}`)
       .then((r) => r.json())
       .then((d) => {
         const active = (d.goals ?? [])
@@ -269,8 +269,8 @@ export default function CommandCenter() {
         {/* ── Hero Strip ──────────────────────────────────────────────────────── */}
         <div className="flex items-start justify-between pb-5 border-b border-zinc-800/60">
           <div>
-            <h1 className="text-2xl font-bold text-white tracking-tight">{getGreeting()}</h1>
-            <p className="text-sm text-zinc-500 mt-0.5">{formatDate()}</p>
+            <h1 className="text-2xl font-bold text-white tracking-tight min-h-8">{header?.greeting ?? ' '}</h1>
+            <p className="text-sm text-zinc-500 mt-0.5 min-h-5">{header?.date ?? ' '}</p>
           </div>
           <div className="flex items-center gap-1.5 mt-1">
             <Clock className="w-3.5 h-3.5 text-emerald-500" />

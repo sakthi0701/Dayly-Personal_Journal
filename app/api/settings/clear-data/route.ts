@@ -1,7 +1,14 @@
 import { NextResponse } from 'next/server';
 import { supabase } from '@/lib/supabase';
 
-export async function DELETE() {
+export async function DELETE(req: Request) {
+    // Refuse a bare DELETE: the client must send the confirmation the user typed/authorized.
+    // This is a guard against accidental or stray calls, NOT authentication — the API has no auth.
+    const body = await req.json().catch(() => null);
+    if (body?.confirm !== 'DELETE') {
+        return NextResponse.json({ error: 'Confirmation required' }, { status: 400 });
+    }
+
     try {
         // 1. Delete all entries
         const { error: entriesError } = await supabase

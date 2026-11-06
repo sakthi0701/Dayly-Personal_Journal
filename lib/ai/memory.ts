@@ -37,12 +37,18 @@ Each extracted fact must be a complete, self-contained sentence that would still
 You MUST return a valid JSON object with a 'facts' key containing an array of strings.`;
 
 export const mem0 = new Memory({
-    customPrompt: MEMORY_EXTRACTION_PROMPT,
+    // mem0ai v3 renamed `customPrompt` -> `customInstructions`; the old key is silently ignored.
+    customInstructions: MEMORY_EXTRACTION_PROMPT,
+    // Extraction runs on Gemini, NOT Groq. mem0 v3's built-in extraction prompt is ~8.6k tokens
+    // per call, which exceeds Groq's 8k tokens/minute on-demand cap for gpt-oss-120b — every
+    // journal ingestion 413'd from the v3 upgrade until this change. Don't move it back to Groq
+    // without checking the model's TPM limit against that request size. gemini-3.8-flash (not 2.5-flash):
+    // the free tier caps gemini-2.5-flash at 20 requests/day, and Telegram/WhatsApp add per message.
     llm: {
-        provider: "groq",
+        provider: "gemini",
         config: {
-            model: "openai/gpt-oss-120b",
-            apiKey: apiKeyGroq,
+            model: "gemini-3.8-flash",
+            apiKey: apiKeyGemini,
         }
     },
     embedder: {
@@ -74,5 +80,26 @@ export const mem0 = new Memory({
             supabaseKey: supabaseKey,
         }
     }
-} as any);
+});
+
+export const MEM0_USER_ID = 'default_user';
+
+/**
+ * Semantic search over the journal memory store, scoped to the single app user.
+ *
+ * mem0ai v3 contract: search() THROWS if given a top-level `userId`/`limit`, and filters by
+ * `metadata.user_id` (snake_case) via JSONB containment. DO NOT revert to the old
+ * `{ userId, limit } as any` shape — it threw on every call after the v3 upgrade and every
+ * caller silently fell back to "no memories". Rows written before v3 only had `userId`; they
+ * were migrated to also carry `user_id` (supabase/mem0_v3_user_id.sql).
+ */
+export async function searchMemories(query: string, topK: number) {
+    // Over-fetch, then drop mem0 v3 "entity" rows (keyword fragments like "band to their waist",
+    // payload has `entityType`). mem0's Supabase adapter writes its entity store into the SAME
+    // `memories` table (it honours `tableName`, not the `_entities` collectionName), so without
+    // this filter fragments crowd real journal facts out of the top results.
+    const res = await mem0.search(query, { filters: { user_id: MEM0_USER_ID }, topK: topK * 3 });
+    res.results = res.results.filter((r) => !r.metadata?.entityType).slice(0, topK);
+    return res;
+}
 

@@ -13,6 +13,9 @@ import Groq from 'groq-sdk';
 import { supabase } from '@/lib/supabase';
 import { getISTDateString, getTodayISTWindow } from './executor';
 import { loadHistory } from './pipeline';
+import { localHour, partOfDay } from '@/lib/utils/day';
+import { searchMemories } from '@/lib/ai/memory';
+import { EVIDENCE_MIN_SCORE, formatSourceDate, recentMemorySources, toMemorySources } from '@/lib/ai/memorySources';
 
 const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 const TZ = 'Asia/Kolkata';
@@ -80,6 +83,8 @@ export async function buildAccountabilityContext(): Promise<AccountabilityContex
 
   const lines: string[] = [];
   lines.push(`NOW: ${now.toLocaleString('en-IN', { timeZone: TZ, weekday: 'long', day: 'numeric', month: 'short', hour: 'numeric', minute: '2-digit', hour12: true })} IST`);
+  // Same bucket as the Overview greeting (lib/utils/day.ts) — the model mis-greeted 2:30 am as "evening".
+  lines.push(`PART OF DAY: ${partOfDay(localHour(now, TZ))}`);
 
   // Pressure tasks — highest stakes first
   const pressure = pressureRes.data ?? [];
@@ -135,7 +140,37 @@ export async function buildAccountabilityContext(): Promise<AccountabilityContex
   const doneToday = [...(pressureDoneRes.data ?? []), ...(tasksDoneRes.data ?? [])].map((t) => `"${t.title}"`);
   lines.push(`- Completed today: ${doneToday.length ? doneToday.join(', ') : 'nothing yet'}`);
 
+  // Journal memory — what they recently wrote + what they wrote about today's open items
+  const focusTitles = [...pressure.slice(0, 3), ...dated.slice(0, 3), ...goals.slice(0, 2)].map((t) => t.title);
+  lines.push(...(await journalSection(focusTitles)));
+
   return { text: lines.join('\n'), focusInProgress: (activeRes.data?.length ?? 0) > 0 };
+}
+
+async function journalSection(focusTitles: string[]): Promise<string[]> {
+  try {
+    const [recent, related] = await Promise.all([
+      recentMemorySources(3, TZ, 5),
+      focusTitles.length
+        ? searchMemories(`What has the user written about: ${focusTitles.join('; ')}`, 8)
+            .then((r) => toMemorySources(r.results, TZ))
+            .then((all) => all.filter((m) => m.score >= EVIDENCE_MIN_SCORE))
+        : Promise.resolve([]),
+    ]);
+    const seen = new Set(recent.map((m) => m.fact));
+    const relatedOnly = related.filter((m) => !seen.has(m.fact)).slice(0, 4);
+    if (!recent.length && !relatedOnly.length) return [];
+    const fmt = (m: { date: string; fact: string }) => `- [${formatSourceDate(m.date)}] ${m.fact}`;
+    return [
+      '', 'FROM THEIR JOURNAL (their own words, dated; cite the date if you bring one up):',
+      ...(recent.length ? ['Written in the last 3 days:', ...recent.map(fmt)] : []),
+      ...(relatedOnly.length ? ["Related to today's open items:", ...relatedOnly.map(fmt)] : []),
+    ];
+  } catch (e) {
+    // Memory is context, not a dependency: the check-in still runs on task data without it.
+    console.error('[checkin] journal memory unavailable:', e);
+    return [];
+  }
 }
 
 // ── Prompt ─────────────────────────────────────────────────────────────────────
