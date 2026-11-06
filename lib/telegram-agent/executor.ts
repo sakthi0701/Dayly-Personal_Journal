@@ -204,7 +204,7 @@ async function execCompletePressureTask(args: { task_name: string }): Promise<To
   };
 }
 
-async function execAddTask(args: { title: string; due_date?: string; priority?: string }): Promise<ToolResult['data'] & { summary: string }> {
+async function execAddTask(args: { title: string; notes?: string; due_date?: string; priority?: string }): Promise<ToolResult['data'] & { summary: string }> {
   const { data: lastTask } = await supabase
     .from('tasks')
     .select('position')
@@ -219,6 +219,7 @@ async function execAddTask(args: { title: string; due_date?: string; priority?: 
     .from('tasks')
     .insert({
       title: args.title.trim(),
+      notes: args.notes?.trim() || null,
       priority: args.priority ?? 'none',
       due_date: args.due_date ?? null,
       position,
@@ -232,8 +233,84 @@ async function execAddTask(args: { title: string; due_date?: string; priority?: 
     task_title: task.title,
     due_date: args.due_date ?? null,
     priority: args.priority ?? 'none',
-    summary: `Task "${task.title}" added${args.due_date ? ` (due ${args.due_date})` : ''}.`,
+    summary: `Task "${task.title}" added${args.due_date ? ` (due ${args.due_date})` : ''}${args.notes?.trim() ? ' with notes' : ''}.`,
   };
+}
+
+// ── Edits (voice-call tools; status changes go through complete_* instead) ─────
+
+async function execUpdateTask(args: {
+  task_name: string; new_title?: string; notes?: string; notes_mode?: 'append' | 'replace';
+  due_date?: string; priority?: string; estimated_pomodoros?: number;
+}): Promise<ToolResult['data'] & { summary: string }> {
+  const { data: tasks } = await supabase
+    .from('tasks')
+    .select('id, title, notes')
+    .in('status', ['todo', 'in-progress'])
+    .is('parent_task_id', null);
+
+  const match = bestMatch(args.task_name, tasks ?? []);
+  if (!match) return { matched: false, summary: `Could not find an open task matching "${args.task_name}".` };
+
+  const updates: Record<string, unknown> = {};
+  const changed: string[] = [];
+  if (args.new_title?.trim()) { updates.title = args.new_title.trim(); changed.push(`renamed to "${updates.title}"`); }
+  if (args.notes?.trim()) {
+    const note = args.notes.trim();
+    const existing = (match.notes ?? '').trim();
+    // Default is append: never silently wipe notes the user wrote in the app
+    updates.notes = args.notes_mode === 'replace' || !existing ? note : `${existing}\n\n${note}`;
+    changed.push(args.notes_mode === 'replace' ? 'notes rewritten' : 'notes added');
+  }
+  if (args.due_date) { updates.due_date = args.due_date; changed.push(`due ${args.due_date}`); }
+  if (args.priority) { updates.priority = args.priority; changed.push(`priority ${args.priority}`); }
+  if (args.estimated_pomodoros) { updates.estimated_pomodoros = args.estimated_pomodoros; changed.push(`${args.estimated_pomodoros} pomodoros`); }
+
+  if (!changed.length) return { matched: true, summary: `Nothing to change on "${match.title}".` };
+  const { error } = await supabase.from('tasks').update(updates).eq('id', match.id);
+  if (error) throw new Error(error.message);
+  return { matched: true, task_title: match.title, summary: `Task "${match.title}" updated: ${changed.join(', ')}.` };
+}
+
+async function execUpdatePressureTask(args: {
+  task_name: string; new_title?: string; deadline?: string; priority?: number; estimated_minutes?: number;
+}): Promise<ToolResult['data'] & { summary: string }> {
+  const { data: tasks } = await supabase
+    .from('pressure_tasks')
+    .select('id, title')
+    .in('status', ['todo', 'snoozed']);
+
+  const match = bestMatch(args.task_name, tasks ?? []);
+  if (!match) return { matched: false, summary: `Could not find an open pressure task matching "${args.task_name}".` };
+
+  const updates: Record<string, unknown> = {};
+  const changed: string[] = [];
+  if (args.new_title?.trim()) { updates.title = args.new_title.trim(); changed.push(`renamed to "${updates.title}"`); }
+  if (args.deadline) { updates.deadline = args.deadline; changed.push(`deadline ${args.deadline}`); }
+  if (args.priority) { updates.priority = args.priority; changed.push(`priority ${args.priority}`); }
+  if (args.estimated_minutes) { updates.estimated_minutes = args.estimated_minutes; changed.push(`~${args.estimated_minutes} min`); }
+
+  if (!changed.length) return { matched: true, summary: `Nothing to change on "${match.title}".` };
+  const { error } = await supabase.from('pressure_tasks').update(updates).eq('id', match.id);
+  if (error) throw new Error(error.message);
+  return { matched: true, task_title: match.title, summary: `Pressure task "${match.title}" updated: ${changed.join(', ')}.` };
+}
+
+async function execUpdateGoal(args: { goal_name: string; new_title?: string; deadline?: string }): Promise<ToolResult['data'] & { summary: string }> {
+  const { data: goals } = await supabase.from('goals').select('id, title').neq('status', 'completed');
+
+  const match = bestMatch(args.goal_name, goals ?? []);
+  if (!match) return { matched: false, summary: `Could not find an active goal matching "${args.goal_name}".` };
+
+  const updates: Record<string, unknown> = {};
+  const changed: string[] = [];
+  if (args.new_title?.trim()) { updates.title = args.new_title.trim(); changed.push(`renamed to "${updates.title}"`); }
+  if (args.deadline) { updates.deadline = args.deadline; changed.push(`deadline ${args.deadline}`); }
+
+  if (!changed.length) return { matched: true, summary: `Nothing to change on goal "${match.title}".` };
+  const { error } = await supabase.from('goals').update(updates).eq('id', match.id);
+  if (error) throw new Error(error.message);
+  return { matched: true, goal_title: match.title, summary: `Goal "${match.title}" updated: ${changed.join(', ')}.` };
 }
 
 async function execAddPressureTask(args: { title: string; deadline?: string; priority?: number }): Promise<ToolResult['data'] & { summary: string }> {
@@ -617,6 +694,15 @@ export async function executeTools(toolCalls: ToolCall[]): Promise<ToolResult[]>
           break;
         case 'read_journal':
           data = await execReadJournal(args as Parameters<typeof execReadJournal>[0]);
+          break;
+        case 'update_task':
+          data = await execUpdateTask(args as Parameters<typeof execUpdateTask>[0]);
+          break;
+        case 'update_pressure_task':
+          data = await execUpdatePressureTask(args as Parameters<typeof execUpdatePressureTask>[0]);
+          break;
+        case 'update_goal':
+          data = await execUpdateGoal(args as Parameters<typeof execUpdateGoal>[0]);
           break;
         default:
           data = { summary: `Unknown tool: ${name}` };

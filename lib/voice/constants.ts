@@ -31,6 +31,9 @@ export const VOICE_AGENT_TOOLS = [
   'add_pressure_tasks',
   'get_stats',
   'set_reminder',
+  'update_task',
+  'update_pressure_task',
+  'update_goal',
 ] as const;
 
 /** Voice-only tool: lets Sensei hang up after saying goodbye. Handled on the client. */

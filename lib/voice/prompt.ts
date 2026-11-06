@@ -6,7 +6,7 @@
  */
 
 import { Behavior, type FunctionDeclaration } from '@google/genai';
-import { AGENT_TOOLS } from '@/lib/telegram-agent/tools';
+import { AGENT_TOOLS, EDIT_TOOLS } from '@/lib/telegram-agent/tools';
 import type { ConversationMessage } from '@/lib/telegram-agent/pipeline';
 import { VOICE_AGENT_TOOLS, END_CALL_TOOL } from './constants';
 
@@ -38,11 +38,20 @@ HOW TO TALK:
 
 CHANGING THEIR DATA (tools):
 - Before ANY tool that changes data (log_journal, log_habits, complete_tasks, complete_pressure_tasks, add_tasks,
-  add_pressure_tasks, set_reminder), say exactly what you are about to do and wait for a clear yes. Only then call the tool.
+  add_pressure_tasks, update_task, update_pressure_task, update_goal, set_reminder), say exactly what you are about
+  to do and wait for a clear yes. Only then call the tool.
   If the user explicitly asked you to do that exact thing ("mark X done", "put this in my journal"), that request IS the yes.
 - get_stats needs no confirmation.
 - Items under "Completed today" in THEIR DATA are already done — never offer to complete them again.
 - After a tool returns, confirm in one short sentence using its result. If nothing matched, say so and ask which item they meant.
+
+TASK NOTES & EDITS:
+- When they add a task AND describe it (what to do, why, steps, people, tools, links, constraints), put that in the task's
+  \`notes\`: a clear, concise summary in their perspective — short sentences or "- " lines, one point each. Keep every concrete
+  detail; drop filler. Do not invent steps they did not say. Mention you saved notes when you confirm.
+- To change an existing task (rename, notes, due date, priority, estimate) use update_task; pressure tasks → update_pressure_task;
+  goals (rename, deadline) → update_goal. For notes, append by default; use notes_mode "replace" only if they ask to rewrite.
+- Never use update tools to mark something done — use the complete_* tools for that.
 
 JOURNAL:
 - When they tell you about their day, feelings, a lesson or a decision, offer to save it to their journal (log_journal).
@@ -76,7 +85,7 @@ const VOICE_DESCRIPTIONS: Record<string, string> = {
 /** Telegram agent tools (allowlisted) + end_call, as Gemini Live function declarations. */
 export function buildCallTools(): FunctionDeclaration[] {
   const allowed = new Set<string>(VOICE_AGENT_TOOLS);
-  const agentTools: FunctionDeclaration[] = AGENT_TOOLS
+  const agentTools: FunctionDeclaration[] = [...AGENT_TOOLS, ...EDIT_TOOLS]
     .filter((t) => allowed.has(t.function.name))
     .map((t) => ({
       name: t.function.name,

@@ -20,7 +20,16 @@ export type ToolName =
   | 'start_focus_timer'
   | 'start_break_timer'
   | 'stop_timer'
-  | 'read_journal';
+  | 'read_journal'
+  | 'update_task'
+  | 'update_pressure_task'
+  | 'update_goal';
+
+/** Shared by add_tasks + update_task. Bullet format: a one-sentence summary dropped real steps in testing. */
+const NOTES_PARAM_DESCRIPTION =
+  'Task notes summarising what the user said about this task, as "- " bullet lines separated by newlines, ' +
+  'one concrete point per line: the goal/why, each step or thing to check, people involved, links, deadlines, constraints. ' +
+  'Keep EVERY concrete detail they mentioned; drop filler; never invent steps. Omit if they gave no details.';
 
 export const AGENT_TOOLS = [
   {
@@ -128,6 +137,10 @@ export const AGENT_TOOLS = [
               type: 'object',
               properties: {
                 title: { type: 'string', description: 'Task title.' },
+                notes: {
+                  type: 'string',
+                  description: NOTES_PARAM_DESCRIPTION,
+                },
                 due_date: {
                   type: 'string',
                   description: 'ISO date YYYY-MM-DD. Only set if user explicitly mentions a date.',
@@ -323,6 +336,82 @@ export const AGENT_TOOLS = [
             description: 'IST date YYYY-MM-DD. Omit for today. Resolve "yesterday" etc. from CURRENT TIME.',
           },
         },
+      },
+    },
+  },
+];
+
+/**
+ * Edit tools — currently exposed to Sensei voice calls only (see lib/voice/prompt.ts).
+ * Kept out of AGENT_TOOLS so the Telegram router's behaviour doesn't change; add them
+ * there deliberately (with routing rules in pipeline.ts) if Telegram should edit too.
+ * Status changes are NOT here on purpose: completion goes through complete_* tools.
+ */
+export const EDIT_TOOLS = [
+  {
+    type: 'function' as const,
+    function: {
+      name: 'update_task' as ToolName,
+      description:
+        'Edit an existing open task: rename it, add to or rewrite its notes, change its due date, priority or pomodoro estimate. ' +
+        'Examples: "add to the API task notes that we use AES", "move the report to Friday", "make the bug fix urgent".',
+      parameters: {
+        type: 'object',
+        properties: {
+          task_name: { type: 'string', description: 'Current name or partial name of the task.' },
+          new_title: { type: 'string', description: 'New title. Omit to keep the current one.' },
+          notes: {
+            type: 'string',
+            description: `${NOTES_PARAM_DESCRIPTION} Omit to leave notes unchanged.`,
+          },
+          notes_mode: {
+            type: 'string',
+            enum: ['append', 'replace'],
+            description: '"append" (default) adds below existing notes. "replace" only if the user asks to rewrite or clear the notes.',
+          },
+          due_date: { type: 'string', description: 'New due date, ISO YYYY-MM-DD.' },
+          priority: { type: 'string', enum: ['urgent', 'high', 'medium', 'low', 'none'] },
+          estimated_pomodoros: { type: 'number', description: 'New estimate in 25-minute pomodoros.' },
+        },
+        required: ['task_name'],
+      },
+    },
+  },
+  {
+    type: 'function' as const,
+    function: {
+      name: 'update_pressure_task' as ToolName,
+      description:
+        'Edit an existing open pressure task: rename it, change its deadline, priority or time estimate.',
+      parameters: {
+        type: 'object',
+        properties: {
+          task_name: { type: 'string', description: 'Current name or partial name of the pressure task.' },
+          new_title: { type: 'string', description: 'New title. Omit to keep the current one.' },
+          deadline: {
+            type: 'string',
+            description: 'New deadline. YYYY-MM-DD, or YYYY-MM-DDTHH:MM:00 with a time (IST as-is).',
+          },
+          priority: { type: 'number', description: '1=critical, 2=high, 3=medium.' },
+          estimated_minutes: { type: 'number', description: 'New time estimate in minutes.' },
+        },
+        required: ['task_name'],
+      },
+    },
+  },
+  {
+    type: 'function' as const,
+    function: {
+      name: 'update_goal' as ToolName,
+      description: 'Edit an active goal: rename it or change its deadline.',
+      parameters: {
+        type: 'object',
+        properties: {
+          goal_name: { type: 'string', description: 'Current name or partial name of the goal.' },
+          new_title: { type: 'string', description: 'New title. Omit to keep the current one.' },
+          deadline: { type: 'string', description: 'New deadline, ISO YYYY-MM-DD.' },
+        },
+        required: ['goal_name'],
       },
     },
   },
