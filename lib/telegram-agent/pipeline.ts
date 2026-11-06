@@ -142,7 +142,11 @@ YOUR RULES:
 
 // ── Journal pipeline (with Go Deeper) ─────────────────────────────────────────
 
-async function processJournal(content: string): Promise<{ entryId: string; goDeeperQuestion: string }> {
+/**
+ * Append a timestamped line to today's (IST) journal entry, creating the entry if needed.
+ * Shared by the Telegram agent and Sensei voice calls — keep it free of Telegram-only work.
+ */
+export async function appendToTodayJournal(content: string): Promise<{ entryId: string; fullContent: string }> {
   const { start, end } = (() => {
     const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
     const nowIST = new Date(Date.now() + IST_OFFSET_MS);
@@ -192,6 +196,12 @@ async function processJournal(content: string): Promise<{ entryId: string; goDee
     if (error) throw new Error(error.message);
     entryId = newEntry.id;
   }
+
+  return { entryId, fullContent };
+}
+
+async function processJournal(content: string): Promise<{ entryId: string; goDeeperQuestion: string }> {
+  const { entryId, fullContent } = await appendToTodayJournal(content);
 
   // Fetch Mem0 context for Go Deeper question
   let datedContext: { content: string; date: string }[] = [];

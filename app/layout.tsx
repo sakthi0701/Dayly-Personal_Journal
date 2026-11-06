@@ -25,6 +25,7 @@ export const viewport = {
 import NotificationManager from "@/components/layout/NotificationManager";
 import WidgetSync from "@/components/layout/WidgetSync";
 import CheckInDialog from "@/components/layout/CheckInDialog";
+import SenseiCallManager from "@/components/voice/SenseiCallManager";
 
 export default function RootLayout({
   children,
@@ -46,6 +47,7 @@ export default function RootLayout({
             <GlobalTimerUI />
             <NotificationManager />
             <CheckInDialog />
+            <SenseiCallManager />
             <WidgetSync />
           </SidebarProvider>
         </LockProvider>

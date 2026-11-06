@@ -6,6 +6,7 @@ import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import AppLockSettings from '@/components/settings/AppLockSettings';
 import TimezoneSettings from '@/components/settings/TimezoneSettings';
+import CallSettings from '@/components/settings/CallSettings';
 import { hashString } from '@/lib/security';
 
 // ── PIN Verification Modal ─────────────────────────────────────────────────────
@@ -176,6 +177,7 @@ export default function SettingsPage() {
 
                     <AppLockSettings />
                     <TimezoneSettings />
+                    <CallSettings />
 
                     {/* Danger Zone */}
                     <div className="mt-12 pt-6 border-t border-red-500/20">

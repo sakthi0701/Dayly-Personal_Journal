@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { X, CheckSquare, Flame, Leaf, ArrowRight } from 'lucide-react';
 import { useRouter } from 'next/navigation';
+import { loadCallSettings } from '@/lib/voice/settings';
 
 const STORAGE_KEY = 'dayly_last_checkin';
 const TIMER_STATUS_KEY = 'dayly_timer_v1'; // localStorage key used by useTimerStore
@@ -29,6 +30,8 @@ export default function CheckInDialog() {
 
   const checkAndTrigger = useCallback(() => {
     if (typeof window === 'undefined') return;
+    // Scheduled Sensei calls replace this popup — showing both would double-prompt every hour
+    if (loadCallSettings().enabled) return;
     if (isTimerRunning()) return; // never interrupt deep work
 
     const lastAsked = parseInt(localStorage.getItem(STORAGE_KEY) ?? '0', 10);

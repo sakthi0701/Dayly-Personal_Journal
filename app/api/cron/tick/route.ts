@@ -6,7 +6,7 @@
  * lives here so it shares the bot's Supabase client, Groq calls and formatting.
  *
  * Per tick (IST slots :00 / :30):
- *   07:00                         → LLM morning kickoff
+ *   07:00                         → Atlas task sync (lib/atlas-sync.ts), then LLM morning kickoff
  *   09,11,13,15,17,19:00          → LLM accountability check-in (skipped mid-pomodoro)
  *   21:00                         → LLM evening review
  *   every tick                    → pressure tasks due in ~1h
@@ -24,6 +24,7 @@ import { sendTelegramMessage } from '@/lib/telegram';
 import { saveHistory } from '@/lib/telegram-agent/pipeline';
 import { buildAccountabilityContext, generateCheckIn, type CheckInKind } from '@/lib/telegram-agent/checkin';
 import { settleLastHabitWeek } from '@/lib/habitPenalty';
+import { syncAtlasToday } from '@/lib/atlas-sync';
 
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
@@ -101,6 +102,17 @@ export async function POST(request: Request) {
   const run = async () => {
     const outgoing: string[] = [];
     let skipped: string | null = null;
+
+    // 07:00 IST: pull today's Atlas study tasks BEFORE the morning context is built, so the
+    // kickoff message already sees them. A failed sync must not block the check-in.
+    if (kind === 'morning' && !dryRun) {
+      try {
+        const r = await syncAtlasToday();
+        console.log(`[Cron] Atlas sync ${r.date}: +${r.added} ~${r.updated} -${r.removed}`);
+      } catch (err) {
+        console.error('[Cron] Atlas sync failed:', err);
+      }
+    }
 
     if (kind) {
       const ctx = await buildAccountabilityContext();

@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback, Suspense } from 'react';
 import { useSearchParams } from 'next/navigation';
-import { Plus, Search, Filter, Loader2, RefreshCw, Target, Flame, CheckSquare, Clock, Coins, Ban } from 'lucide-react';
+import { Plus, Search, Filter, Loader2, RefreshCw, Target, Flame, CheckSquare, Clock, Coins, Ban, BookOpen } from 'lucide-react';
 import GlobalDashboardStats from '@/components/tasks/GlobalDashboardStats';
 import TaskList from '@/components/tasks/TaskList';
 import TaskForm from '@/components/tasks/TaskForm';
@@ -105,6 +105,23 @@ function ActionPageInner() {
       triggerWidgetDataSync();
     });
   }, [statsTrigger]);
+
+  // One-way pull of today's Atlas study tasks (lib/atlas-sync.ts); the 07:00 IST cron does the same.
+  const [syncingAtlas, setSyncingAtlas] = useState(false);
+  const syncAtlas = async () => {
+    setSyncingAtlas(true);
+    try {
+      const res = await fetch('/api/atlas-sync', { method: 'POST' });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? 'Atlas sync failed');
+      showToast(`Atlas: +${data.added} new · ${data.updated} updated · ${data.removed} removed`);
+      loadTasks();
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : 'Atlas sync failed', 'error');
+    } finally {
+      setSyncingAtlas(false);
+    }
+  };
 
   const handleUpdate = async (id: string, updates: Partial<Task>) => {
     setTasks((prev) => prev.map((t) => (t.id === id ? { ...t, ...updates } : t)));
@@ -270,6 +287,15 @@ function ActionPageInner() {
             </div>
 
             <div className="ml-auto flex items-center gap-2">
+              <button
+                id="atlas-sync-btn"
+                onClick={syncAtlas}
+                disabled={syncingAtlas}
+                className="flex items-center gap-2 px-3 py-2 text-sm font-medium text-zinc-300 bg-zinc-900 border border-zinc-800 hover:bg-zinc-800 rounded-xl transition-all disabled:opacity-60 whitespace-nowrap"
+                title="Pull today's study tasks from Atlas"
+              >
+                <BookOpen className={`w-4 h-4 ${syncingAtlas ? 'animate-pulse' : ''}`} /> Sync from Atlas
+              </button>
               <button
                 onClick={loadTasks}
                 className="p-2 text-zinc-600 hover:text-zinc-300 hover:bg-zinc-800 rounded-xl transition-all"
