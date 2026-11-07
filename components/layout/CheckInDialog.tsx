@@ -30,7 +30,7 @@ export default function CheckInDialog() {
 
   const checkAndTrigger = useCallback(() => {
     if (typeof window === 'undefined') return;
-    // Scheduled Sensei calls replace this popup — showing both would double-prompt every hour
+    // Scheduled Jarvis calls replace this popup — showing both would double-prompt every hour
     if (loadCallSettings().enabled) return;
     if (isTimerRunning()) return; // never interrupt deep work
 

@@ -44,7 +44,7 @@ export async function transcribeAudio(file: File): Promise<string> {
 //
 // Two-state architecture:
 //   • If `question` is provided → Q&A mode (answer the question directly using data + journal)
-//   • If `question` is absent   → Autonomous Insight mode (Sensei chooses the most critical angle)
+//   • If `question` is absent   → Autonomous Insight mode (Jarvis chooses the most critical angle)
 
 export async function generateAdvice(
   contextEntries: { content: string }[],
@@ -67,7 +67,7 @@ export async function generateAdvice(
 
   // ── System Prompt ──────────────────────────────────────────────────────────
   const systemPrompt = `
-You are "The Sensei."
+You are "The Jarvis."
 
 You are analyzing this user's journal entries alongside their hard execution data (task completion, focus sessions, habit logs, goal deadlines). You know the gap between the story they tell themselves and what the data actually shows.
 
@@ -330,7 +330,7 @@ Based on this draft and my past entries, Think of three possible questions and c
 
 // ─── Telegram Bot Smart Response ─────────────────────────────────────────────
 //
-// Wraps any raw command output with a Sensei-flavoured observation.
+// Wraps any raw command output with a Jarvis-flavoured observation.
 // Uses llama-3.3-70b (fast, cheap) for sub-second latency on mobile.
 //
 // context: the raw data string already assembled (task list, habit list, etc.)
@@ -343,7 +343,7 @@ export async function generateTelegramResponse(
   mode: 'journal' | 'habits' | 'tasks' | 'pressure' | 'stats' | 'loghabit' | 'cron'
 ): Promise<string> {
   const modeInstructions: Record<string, string> = {
-    journal: `The user just journaled. You've read the entry and the Sensei question has already been generated. Your job is just to frame the saved confirmation with one brief, punchy observation from their entry — one sentence that shows you actually read it. Then output the question. Do NOT add anything after the question.`,
+    journal: `The user just journaled. You've read the entry and the Jarvis question has already been generated. Your job is just to frame the saved confirmation with one brief, punchy observation from their entry — one sentence that shows you actually read it. Then output the question. Do NOT add anything after the question.`,
     habits:  `The user asked to see their habits. Show the data cleanly. If 0 habits are done, add one cold sentence to acknowledge that. If all done, one warm sentence. Keep the data list intact — just prepend or append one sentence of commentary.`,
     tasks:   `The user asked to see their tasks. Show the list intact. If there are high-priority tasks, note the most urgent one by name. Keep it to one sentence of commentary max.`,
     pressure:`The user asked for their pressure tasks. Show the list. If anything is overdue, call it out by name in one sentence. One sentence only.`,
@@ -352,7 +352,7 @@ export async function generateTelegramResponse(
     cron:    `This is an automated deadline reminder. Make it feel like a personal nudge from someone who knows the user, not a machine. Reference the task titles by name. Keep it short — 3 lines max.`,
   };
 
-  const systemPrompt = `You are the Sensei — a direct, no-nonsense productivity coach built into the user's Dayly app Telegram bot. You have zero patience for excuses but genuine care for results.
+  const systemPrompt = `You are the Jarvis — a direct, no-nonsense productivity coach built into the user's Dayly app Telegram bot. You have zero patience for excuses but genuine care for results.
 
 RULES:
 - Maximum 3 sentences total in your response.

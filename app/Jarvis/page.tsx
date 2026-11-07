@@ -88,7 +88,7 @@ export default function SenseiPage() {
   const loadData = useCallback(() => {
     const t = Date.now();
     Promise.all([
-      fetch(`/api/sensei/threads?t=${t}`).then(r => r.json()).catch(() => ({ threads: [] })),
+      fetch(`/api/Jarvis/threads?t=${t}`).then(r => r.json()).catch(() => ({ threads: [] })),
       fetch(`/api/stats/user?t=${t}`).then(r => r.json()).catch(() => ({ stats: null })),
     ]).then(([threadsData, statsData]) => {
       setThreads(threadsData.threads ?? []);
@@ -130,7 +130,7 @@ export default function SenseiPage() {
     setQuestion(''); setLoading(true);
     setMessages(prev => [...prev, { id: Date.now().toString(), role: 'user', content: text, created_at: new Date().toISOString() }]);
     try {
-      const res = await fetch('/api/sensei/chat', {
+      const res = await fetch('/api/Jarvis/chat', {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ message: text, threadId: currentThreadId, tz: getUserTimeZone() }),
       });
@@ -138,7 +138,7 @@ export default function SenseiPage() {
       if (!res.ok) throw new Error(data.error);
       if (!currentThreadId && data.threadId) {
         setCurrentThreadId(data.threadId);
-        fetch('/api/sensei/threads').then(r => r.json()).then(d => setThreads(d.threads ?? [])).catch(() => null);
+        fetch('/api/Jarvis/threads').then(r => r.json()).then(d => setThreads(d.threads ?? [])).catch(() => null);
       }
       setMessages(prev => [...prev, { id: (Date.now() + 1).toString(), role: 'assistant', content: data.advice, created_at: new Date().toISOString(), sources: data.sources ?? [] }]);
     } catch {
@@ -152,7 +152,7 @@ export default function SenseiPage() {
     if (openThread === id) { setOpenThread(null); return; }
     setOpenThread(id);
     try {
-      const res = await fetch(`/api/sensei/threads/${id}`);
+      const res = await fetch(`/api/Jarvis/threads/${id}`);
       const data = await res.json();
       if (data.messages) { setMessages((data.messages as StoredMessage[]).map(({ metadata, ...m }) => ({ ...m, sources: metadata?.sources ?? [] }))); setCurrentThreadId(id); setShowHistory(false); }
     } catch { /* silent */ }
@@ -160,7 +160,7 @@ export default function SenseiPage() {
 
   const deleteThread = async (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
-    await fetch(`/api/sensei/threads/${id}`, { method: 'DELETE' });
+    await fetch(`/api/Jarvis/threads/${id}`, { method: 'DELETE' });
     setThreads(prev => prev.filter(t => t.id !== id));
     if (currentThreadId === id) startNewThread();
   };
@@ -186,7 +186,7 @@ export default function SenseiPage() {
         <div className="flex items-center justify-between">
           <div>
             <h1 className="text-2xl font-bold tracking-tight text-white flex items-center gap-2">
-              <Brain className="w-6 h-6 text-violet-400" /> Sensei
+              <Brain className="w-6 h-6 text-violet-400" /> Jarvis
             </h1>
             <p className="text-sm text-zinc-500 mt-0.5">See the truth of your behavior, then ask what it means.</p>
           </div>
@@ -336,13 +336,13 @@ export default function SenseiPage() {
           )}
         </div>
 
-        {/* ── Sensei Chat Panel ── */}
+        {/* ── Jarvis Chat Panel ── */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
           <SunWarrior />
           <div className="bg-zinc-900/80 border border-zinc-800/60 rounded-2xl p-6 space-y-4 flex flex-col">
             <div className="flex items-center gap-2">
               <Brain className="w-4 h-4 text-violet-400" />
-              <h2 className="text-sm font-semibold text-white">Sensei Insight</h2>
+              <h2 className="text-sm font-semibold text-white">Jarvis Insight</h2>
               <span className="ml-auto text-[10px] text-zinc-600">autonomous · data-driven</span>
             </div>
 
@@ -387,7 +387,7 @@ export default function SenseiPage() {
                 value={question}
                 onChange={e => setQuestion(e.target.value)}
                 onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); sendMessage(); } }}
-                placeholder="Ask the Sensei anything… or leave blank for an autonomous insight."
+                placeholder="Ask the Jarvis anything… or leave blank for an autonomous insight."
                 rows={2}
                 className="w-full bg-zinc-950 border border-zinc-800 rounded-xl py-2.5 pl-4 pr-10 text-sm text-zinc-200 placeholder:text-zinc-700 focus:outline-none focus:border-zinc-600 transition-all resize-none"
               />
@@ -462,11 +462,11 @@ export default function SenseiPage() {
 }
 
 // ── Sub-components ─────────────────────────────────────────────────────────────
-/** "Sensei remembered: Nov 5, 2026 · …" — links to the journal entries the answer drew on. */
+/** "Jarvis remembered: Nov 5, 2026 · …" — links to the journal entries the answer drew on. */
 function SourcesLine({ sources }: { sources: Source[] }) {
   return (
     <p className="mt-1 ml-1 max-w-[88%] text-[11px] text-zinc-400">
-      Sensei remembered:{' '}
+      Jarvis remembered:{' '}
       {sources.map((s, i) => (
         <span key={s.entryId}>
           {i > 0 && ' · '}

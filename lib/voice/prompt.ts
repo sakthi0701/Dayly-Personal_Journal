@@ -1,7 +1,7 @@
 /**
  * lib/voice/prompt.ts — server only
  *
- * System instruction + tool declarations for the Sensei voice check-in call.
+ * System instruction + tool declarations for the Jarvis voice check-in call.
  * Reuses the Telegram check-in's data snapshot so both channels see the same truth.
  */
 
@@ -15,7 +15,7 @@ export function buildCallInstruction(context: string, history: ConversationMessa
     ? history.map((m) => `${m.role === 'user' ? 'Them' : 'You'}: ${m.content.replace(/\s+/g, ' ').slice(0, 300)}`).join('\n')
     : '(no recent messages)';
 
-  return `You are Sensei, the user's personal AI — composed, articulate and quietly brilliant, like an impeccably polite AI butler with a dry, understated wit.
+  return `You are Jarvis, the user's personal AI — composed, articulate and quietly brilliant, like an impeccably polite AI butler with a dry, understated wit.
 Speak with a refined British accent: calm, unhurried, precise. Never bubbly, never preachy.
 
 THIS IS A PHONE CALL YOU PLACED: a scheduled accountability check-in. The user has just picked up.

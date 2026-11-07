@@ -1,7 +1,7 @@
 /**
  * Turns mem0 search hits into dated, verifiable sources: which journal entry each fact came
  * from and that entry's local date. Used to (a) give the model dated facts it can cite and
- * (b) show "Sensei remembered: <date>" under answers so the user can check the evidence.
+ * (b) show "Jarvis remembered: <date>" under answers so the user can check the evidence.
  */
 import { supabase } from '@/lib/supabase';
 import { localDateStr } from '@/lib/utils/day';
@@ -16,7 +16,7 @@ export interface MemorySource {
 
 /**
  * Minimum mem0 similarity for a fact to be shown as evidence. Every retrieved fact still goes
- * to the model; this only decides what the UI claims Sensei "remembered". Tuned on this
+ * to the model; this only decides what the UI claims Jarvis "remembered". Tuned on this
  * journal: on-topic facts score ≥ ~0.6, off-topic retrievals (e.g. for "hi") score lower.
  */
 export const EVIDENCE_MIN_SCORE = 0.6;

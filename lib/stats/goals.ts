@@ -1,5 +1,5 @@
 /**
- * Shared goal progress + countdown. Used by /api/goals (goal cards, Overview) AND the Sensei
+ * Shared goal progress + countdown. Used by /api/goals (goal cards, Overview) AND the Jarvis
  * execution summary, so "80% complete, 80 days overdue" is the same number everywhere.
  */
 import { toLocalDateStr } from '@/lib/utils/day';

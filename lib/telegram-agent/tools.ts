@@ -342,7 +342,7 @@ export const AGENT_TOOLS = [
 ];
 
 /**
- * Edit tools — currently exposed to Sensei voice calls only (see lib/voice/prompt.ts).
+ * Edit tools — currently exposed to Jarvis voice calls only (see lib/voice/prompt.ts).
  * Kept out of AGENT_TOOLS so the Telegram router's behaviour doesn't change; add them
  * there deliberately (with routing rules in pipeline.ts) if Telegram should edit too.
  * Status changes are NOT here on purpose: completion goes through complete_* tools.

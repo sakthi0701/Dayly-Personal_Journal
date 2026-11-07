@@ -7,9 +7,9 @@
  *   Fast, cheap model. Receives snapshot + history + user message.
  *   Outputs tool calls ONLY. No prose.
  *
- * Tier 2 — gpt-oss-120b (Sensei responder):
+ * Tier 2 — gpt-oss-120b (Jarvis responder):
  *   Smart model. Receives tool results + journal context.
- *   Outputs the final Telegram message in Sensei voice.
+ *   Outputs the final Telegram message in Jarvis voice.
  *   Also fires the Go Deeper engine if journal was logged.
  */
 
@@ -109,7 +109,7 @@ function buildResponderPrompt(
   const nextTask = snapshot.topTasks[0] ?? null;
   const nextPressure = snapshot.topPressure[0] ?? null;
 
-  return `You are the Sensei — the brutally honest, caring productivity voice inside the Dayly app Telegram bot.
+  return `You are the Jarvis — the brutally honest, caring productivity voice inside the Dayly app Telegram bot.
 
 WHAT JUST HAPPENED:
 ${actionsTaken || '(No tools called — pure conversation)'}
@@ -128,7 +128,7 @@ YOUR RULES:
 3. Balance your focus. Do not only ask about habits. If there are pending Pressure Tasks, prioritize pointing those out immediately. If not, point to normal tasks or habits.
 4. If a habit was logged → brief specific reaction + ask about the next pending Pressure Task, normal Task, or Habit BY NAME. Note whether a habit is [GOOD] or [BAD] when responding to it.
 5. If a task/pressure task was completed → acknowledge specifically + name what's next.
-6. If journal was logged → your response will have a Sensei question appended automatically. Just output a short 1-sentence acknowledgment.
+6. If journal was logged → your response will have a Jarvis question appended automatically. Just output a short 1-sentence acknowledgment.
 7. If nothing was actioned (pure chat) → engage directly, nudge toward the most pressing pending item (prioritizing pressure tasks).
 8. Layout: when you mention 2+ items (tasks, habits), put each on its own "- " bullet line,
    grouped under a short *bold* label line (e.g. *Pressure — due today*). Blank line before the closing question.
@@ -144,7 +144,7 @@ YOUR RULES:
 
 /**
  * Append a timestamped line to today's (IST) journal entry, creating the entry if needed.
- * Shared by the Telegram agent and Sensei voice calls — keep it free of Telegram-only work.
+ * Shared by the Telegram agent and Jarvis voice calls — keep it free of Telegram-only work.
  */
 export async function appendToTodayJournal(content: string): Promise<{ entryId: string; fullContent: string }> {
   const { start, end } = (() => {
@@ -392,7 +392,7 @@ export async function runAgentPipeline(
 
   // Append Go Deeper question if journal was logged
   if (goDeeperQuestion) {
-    response = `✅ _Saved._\n\n🧠 *Sensei:* ${goDeeperQuestion}`;
+    response = `✅ _Saved._\n\n🧠 *Jarvis:* ${goDeeperQuestion}`;
   }
 
   // Focus timer requested without a target: ask with a fixed question (the router's next turn

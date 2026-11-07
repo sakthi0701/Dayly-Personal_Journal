@@ -1,14 +1,15 @@
 'use client';
 
 /**
- * Global Sensei call scheduler. Mounted once in the root layout.
+ * Global Jarvis call scheduler. Mounted once in the root layout.
  *
  * - Polls every 20s; when the next call is due (and inside active hours, and no focus
  *   session is running) it rings.
  * - Decline / finished → next call after the interval; snooze → after the chosen minutes;
  *   unanswered → retry in 15 min.
- * - On Android, when the app goes to the background a local notification is scheduled for
- *   the next call; coming back to the foreground cancels it (the in-app ring takes over).
+ * - On Android the next 24h of calls are pre-armed as native alarms (lib/voice/notify.ts), so
+ *   they ring with the app closed; tapping one answers. Opening the app late skips stale calls.
+ * - On the web, a hidden tab gets a system notification when it rings (a closed tab can't ring).
  */
 
 import { useCallback, useEffect, useRef, useState } from 'react';
@@ -17,12 +18,21 @@ import { useTimerStore } from '@/lib/store/useTimerStore';
 import { isNative } from '@/lib/mobile';
 import {
   CALL_NOW_EVENT, CALL_SETTINGS_EVENT, alignToWindow, getNextCallAt, loadCallSettings, scheduleCallIn, setNextCallAt,
+  upcomingCallSlots,
 } from '@/lib/voice/settings';
-import { cancelCallNotification, scheduleCallNotification } from '@/lib/voice/notify';
+import {
+  CALL_NOTIFICATION_KIND, clearDeliveredCallNotifications, showRingNotification, syncCallNotifications,
+} from '@/lib/voice/notify';
 
 const POLL_MS = 20_000;
 const MISSED_RETRY_MIN = 15;
 const FOCUS_RETRY_MIN = 10;
+/**
+ * A call overdue by more than this was missed while the app was closed. Opening the app then
+ * skips to the next slot instead of ringing instantly (user found "rings the moment I open it"
+ * jarring). Tapping the call notification still answers immediately.
+ */
+const STALE_MS = 10 * 60_000;
 
 function isFocusRunning(): boolean {
   const { status, isBreak } = useTimerStore.getState();
@@ -53,6 +63,11 @@ export default function SenseiCallManager() {
     const now = Date.now();
     if (now < next) return;
 
+    if (now - next > STALE_MS) {
+      setNextCallAt(upcomingCallSlots(next, s, 48 * 3_600_000, 1)[0] ?? alignToWindow(now + s.intervalMin * 60_000, s));
+      return;
+    }
+
     const aligned = alignToWindow(now, s);
     if (aligned > now) {
       setNextCallAt(aligned); // quiet hours — wait for the window to open
@@ -80,26 +95,44 @@ export default function SenseiCallManager() {
     };
   }, [check]);
 
-  // Android: notification while backgrounded, in-app ring while foregrounded
+  // Android: keep the next 24h of calls armed as native alarms (they fire with the app closed)
   useEffect(() => {
     if (!isNative()) return;
-    let remove: (() => void) | undefined;
+    void syncCallNotifications();
+    const resync = () => void syncCallNotifications();
+    window.addEventListener(CALL_SETTINGS_EVENT, resync);
+
+    const removers: (() => void)[] = [];
     let cancelled = false;
     (async () => {
       const { App } = await import('@capacitor/app');
-      const handle = await App.addListener('appStateChange', ({ isActive }) => {
-        if (isActive) {
-          void cancelCallNotification();
-          check();
-        } else if (!phaseRef.current) {
-          void scheduleCallNotification();
-        }
-      });
-      if (cancelled) handle.remove();
-      else remove = () => handle.remove();
+      const { LocalNotifications } = await import('@capacitor/local-notifications');
+      const handles = await Promise.all([
+        App.addListener('appStateChange', ({ isActive }) => {
+          if (isActive) { check(); resync(); }
+        }),
+        // Tapping a call notification = answering it, even if the slot is "stale"
+        LocalNotifications.addListener('localNotificationActionPerformed', ({ notification }) => {
+          if (notification.extra?.kind === CALL_NOTIFICATION_KIND && !phaseRef.current) setPhase('call');
+        }),
+      ]);
+      if (cancelled) handles.forEach((h) => h.remove());
+      else removers.push(...handles.map((h) => () => h.remove()));
     })();
-    return () => { cancelled = true; remove?.(); };
+
+    return () => {
+      cancelled = true;
+      window.removeEventListener(CALL_SETTINGS_EVENT, resync);
+      removers.forEach((r) => r());
+    };
   }, [check]);
+
+  // While ringing: drop the tray copy on Android; raise a system notification on a hidden web tab
+  useEffect(() => {
+    if (phase !== 'ringing') return;
+    void clearDeliveredCallNotifications();
+    return showRingNotification();
+  }, [phase]);
 
   const close = useCallback((nextInMin: number) => {
     setPhase(null);

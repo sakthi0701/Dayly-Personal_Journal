@@ -377,7 +377,7 @@ def lambda_handler(event, context):
         # Don't send during sleep hours (e.g. 12 AM, 3 AM)
         if slot_start.hour >= 9 and slot_start.hour <= 21:
             checkin_msg = (
-                f"🤖 *Sensei Check-in — {now_ist.strftime('%H:%M IST')}*\n\n"
+                f"🤖 *Jarvis Check-in — {now_ist.strftime('%H:%M IST')}*\n\n"
                 "What have you been doing for the last 3 hours? "
                 "Log it now or I'll assume you were scrolling. 🧐"
             )

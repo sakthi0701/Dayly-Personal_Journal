@@ -1,12 +1,15 @@
 "use client";
 
-import { useMemo, useState, useSyncExternalStore } from 'react';
+import { useCallback, useEffect, useMemo, useState, useSyncExternalStore } from 'react';
 import { PhoneCall, Check, Phone } from 'lucide-react';
 import {
   CALL_NOW_EVENT, DEFAULT_CALL_SETTINGS, callSettingsSnapshot, getNextCallAt, loadCallSettings, saveCallSettings,
   subscribeCallSettings, type CallSettings as Settings,
 } from '@/lib/voice/settings';
-import { requestCallNotificationPermission } from '@/lib/voice/notify';
+import {
+  getExactAlarmStatus, hasCallNotificationPermission, openExactAlarmSetting, requestCallNotificationPermission,
+  syncCallNotifications,
+} from '@/lib/voice/notify';
 
 const INTERVALS = [30, 45, 60, 90, 120, 180];
 const HOURS = Array.from({ length: 25 }, (_, h) => h);
@@ -36,6 +39,32 @@ export default function CallSettings() {
   const nextAt = useMemo(() => (snap ? getNextCallAt() : null), [snap]);
   const [showSaved, setShowSaved] = useState(false);
   const [notifDenied, setNotifDenied] = useState(false);
+  // Background-ringing readiness: null = still checking
+  const [notifOk, setNotifOk] = useState<boolean | null>(null);
+  const [exact, setExact] = useState<'granted' | 'denied' | 'n/a' | null>(null);
+
+  const refreshStatus = useCallback(() => {
+    void hasCallNotificationPermission().then(setNotifOk);
+    void getExactAlarmStatus().then(setExact);
+  }, []);
+
+  useEffect(() => {
+    refreshStatus();
+    // Returning from Android's settings screen → re-check what was granted
+    window.addEventListener('focus', refreshStatus);
+    document.addEventListener('visibilitychange', refreshStatus);
+    return () => {
+      window.removeEventListener('focus', refreshStatus);
+      document.removeEventListener('visibilitychange', refreshStatus);
+    };
+  }, [refreshStatus]);
+
+  const askNotifications = async () => {
+    const ok = await requestCallNotificationPermission();
+    setNotifDenied(!ok);
+    setNotifOk(ok);
+    if (ok) await syncCallNotifications(); // arm alarms now that we're allowed to
+  };
 
   const update = async (patch: Partial<Settings>) => {
     const next = { ...s, ...patch };
@@ -43,7 +72,7 @@ export default function CallSettings() {
     saveCallSettings(next); // fires CALL_SETTINGS_EVENT → re-render via useSyncExternalStore
     setShowSaved(true);
     setTimeout(() => setShowSaved(false), 2000);
-    if (patch.enabled) setNotifDenied(!(await requestCallNotificationPermission()));
+    if (patch.enabled) await askNotifications();
   };
 
   return (
@@ -54,8 +83,8 @@ export default function CallSettings() {
             <PhoneCall className="w-6 h-6 text-cyan-400" />
           </div>
           <div>
-            <h2 className="text-xl font-bold">Sensei Check-in Calls</h2>
-            <p className="text-sm text-zinc-400">Sensei calls you, asks how your tasks are going, and updates them as you talk</p>
+            <h2 className="text-xl font-bold">Jarvis Check-in Calls</h2>
+            <p className="text-sm text-zinc-400">Jarvis calls you, asks how your tasks are going, and updates them as you talk</p>
           </div>
         </div>
         {showSaved && (
@@ -81,8 +110,39 @@ export default function CallSettings() {
 
         {notifDenied && (
           <p className="text-xs text-amber-400">
-            Notifications are blocked, so calls will only ring while Dayly is open. Allow notifications for Dayly in Android settings.
+            Notifications are blocked, so calls will only ring while Dayly is open. Allow notifications for Dayly in your device or browser settings.
           </p>
+        )}
+
+        {s.enabled && notifOk !== null && (
+          <div className="rounded-xl border border-zinc-800 bg-zinc-900/60 p-4 space-y-3">
+            <p className="font-semibold text-sm">Ringing while Dayly is closed</p>
+            <div className="flex items-center justify-between gap-3 text-sm">
+              <span className="text-zinc-400">{exact === 'n/a' ? 'Notifications (tab must stay open)' : 'Call notifications'}</span>
+              {notifOk ? (
+                <span className="flex items-center gap-1 text-emerald-400 text-xs"><Check className="w-3.5 h-3.5" /> On</span>
+              ) : (
+                <button onClick={askNotifications} className="px-3 py-1.5 rounded-lg bg-cyan-500/10 border border-cyan-500/30 text-cyan-300 text-xs font-semibold">
+                  Allow
+                </button>
+              )}
+            </div>
+            {exact !== 'n/a' && exact !== null && (
+              <div className="flex items-center justify-between gap-3 text-sm">
+                <div>
+                  <span className="text-zinc-400">Exact timing</span>
+                  {exact === 'denied' && <p className="text-[11px] text-zinc-500">Without it Android may ring a few minutes late</p>}
+                </div>
+                {exact === 'granted' ? (
+                  <span className="flex items-center gap-1 text-emerald-400 text-xs"><Check className="w-3.5 h-3.5" /> On</span>
+                ) : (
+                  <button onClick={() => void openExactAlarmSetting()} className="px-3 py-1.5 rounded-lg bg-cyan-500/10 border border-cyan-500/30 text-cyan-300 text-xs font-semibold">
+                    Allow
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
         )}
 
         <div className={s.enabled ? '' : 'opacity-50 pointer-events-none'}>

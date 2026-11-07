@@ -1,7 +1,7 @@
 /**
  * lib/voice/settings.ts
  *
- * Client-side settings + scheduling math for Sensei check-in calls.
+ * Client-side settings + scheduling math for Jarvis check-in calls.
  * Stored in localStorage (per device), like the other Dayly preferences.
  */
 
@@ -84,4 +84,22 @@ export function scheduleCallIn(minutes: number, s: CallSettings = loadCallSettin
   const at = alignToWindow(Date.now() + minutes * 60_000, s);
   setNextCallAt(at);
   return at;
+}
+
+/**
+ * The next call times from `from` onward (first = `from` itself if still in the future),
+ * stepping by the interval and skipping quiet hours. Used to pre-schedule native alarms so
+ * calls keep ringing while the app is closed — the app can't run JS to arm them later.
+ */
+export function upcomingCallSlots(from: number, s: CallSettings, horizonMs = 24 * 3_600_000, max = 24): number[] {
+  const now = Date.now();
+  const step = s.intervalMin * 60_000;
+  const slots: number[] = [];
+  let t = alignToWindow(from, s);
+  while (t <= now) t = alignToWindow(t + step, s);
+  while (t <= now + horizonMs && slots.length < max) {
+    slots.push(t);
+    t = alignToWindow(t + step, s);
+  }
+  return slots;
 }

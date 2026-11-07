@@ -206,7 +206,7 @@ export async function GET() {
     ok: true,
     service: 'Dayly Telegram AI Agent',
     version: '2.0',
-    architecture: 'two-tier LLM (gpt-oss-20b router + gpt-oss-120b sensei)',
+    architecture: 'two-tier LLM (gpt-oss-20b router + gpt-oss-120b Jarvis)',
     features: ['natural-language', 'voice-journaling', 'habit-logging', 'task-management', 'dynamic-reminders'],
   });
 }

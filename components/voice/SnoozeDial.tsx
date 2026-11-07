@@ -51,7 +51,7 @@ export default function SnoozeDial({ onSnooze, onBack }: Props) {
   };
 
   return (
-    <div className="flex flex-col items-center gap-5" style={{ animation: 'sensei-fade-in 0.25s ease-out both' }}>
+    <div className="flex flex-col items-center gap-5" style={{ animation: 'Jarvis-fade-in 0.25s ease-out both' }}>
       <p className="text-[11px] tracking-[0.3em] text-cyan-300/70 uppercase">Snooze check-in</p>
 
       <svg

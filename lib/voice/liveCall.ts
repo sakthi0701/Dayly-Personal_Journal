@@ -1,7 +1,7 @@
 /**
  * lib/voice/liveCall.ts — browser only
  *
- * Audio engine for a Sensei check-in call over the Gemini Live API.
+ * Audio engine for a Jarvis check-in call over the Gemini Live API.
  *   mic → AudioWorklet (downsample to 16 kHz PCM16) → session.sendRealtimeInput
  *   session audio (24 kHz PCM16) → gap-free scheduled AudioBufferSources → speaker
  * Barge-in: Gemini's server-side VAD sends `interrupted`; we drop queued audio instantly.
@@ -15,7 +15,7 @@ export type CallStatus = 'connecting' | 'live' | 'ended' | 'error';
 
 export interface TranscriptLine {
   id: number;
-  role: 'user' | 'sensei' | 'action';
+  role: 'user' | 'Jarvis' | 'action';
   text: string;
   /** false while the line is still being spoken / the tool is still running */
   final: boolean;
@@ -26,7 +26,7 @@ export interface TranscriptLine {
 export interface CallCallbacks {
   onStatus: (status: CallStatus, detail?: string) => void;
   onTranscript: (lines: TranscriptLine[]) => void;
-  /** Sensei is running a tool (e.g. "Updating your tasks…") */
+  /** Jarvis is running a tool (e.g. "Updating your tasks…") */
   onBusy?: (busy: boolean) => void;
 }
 
@@ -67,7 +67,7 @@ class SenseiCapture extends AudioWorkletProcessor {
     return true;
   }
 }
-registerProcessor('sensei-capture', SenseiCapture);
+registerProcessor('Jarvis-capture', SenseiCapture);
 `;
 
 function toBase64(buf: ArrayBuffer): string {
@@ -138,7 +138,7 @@ export class SenseiLiveCall {
       const res = await fetch('/api/voice/token', { method: 'POST' });
       const data = await res.json().catch(() => ({}));
       if (this.ended) return this.release();
-      if (!res.ok || !data.token) throw new Error(data.error || 'Could not reach Sensei');
+      if (!res.ok || !data.token) throw new Error(data.error || 'Could not reach Jarvis');
 
       // Loaded lazily so the SDK never weighs on normal page loads
       const { GoogleGenAI, Modality } = await import('@google/genai');
@@ -165,7 +165,7 @@ export class SenseiLiveCall {
       this.cb.onStatus('live');
       this.maxTimer = setTimeout(() => this.hangup(), MAX_CALL_MS);
 
-      // Sensei placed the call, so Sensei speaks first
+      // Jarvis placed the call, so Jarvis speaks first
       this.session.sendClientContent({
         turns: [{ role: 'user', parts: [{ text: '[I just picked up your call.]' }] }],
         turnComplete: true,
@@ -240,7 +240,7 @@ export class SenseiLiveCall {
       URL.revokeObjectURL(url);
     }
     const src = this.inCtx.createMediaStreamSource(this.stream);
-    const node = new AudioWorkletNode(this.inCtx, 'sensei-capture');
+    const node = new AudioWorkletNode(this.inCtx, 'Jarvis-capture');
     node.port.onmessage = (e: MessageEvent<{ pcm: ArrayBuffer; rms: number }>) => {
       this.micLevel = e.data.rms;
       if (this.muted || this.ended || !this.session) return;
@@ -256,7 +256,7 @@ export class SenseiLiveCall {
     const sc = m.serverContent;
     if (sc) {
       if (sc.interrupted) {
-        // User talked over Sensei — silence it now and mark the cut-off line
+        // User talked over Jarvis — silence it now and mark the cut-off line
         this.stopPlayback();
         if (this.openSensei) {
           this.openSensei.interrupted = true;
@@ -268,10 +268,10 @@ export class SenseiLiveCall {
         if (part.inlineData?.data) this.playChunk(part.inlineData.data);
       }
       if (sc.inputTranscription?.text) this.appendText('user', sc.inputTranscription.text);
-      if (sc.outputTranscription?.text) this.appendText('sensei', sc.outputTranscription.text);
+      if (sc.outputTranscription?.text) this.appendText('Jarvis', sc.outputTranscription.text);
       if (sc.turnComplete) {
         this.closeLine('user');
-        this.closeLine('sensei');
+        this.closeLine('Jarvis');
         if (this.hangupPending) this.hangupWhenQuiet();
       }
       this.emit();
@@ -380,7 +380,7 @@ export class SenseiLiveCall {
   }
 
   /** Transcription arrives in fragments; keep appending to the role's open line. */
-  private appendText(role: 'user' | 'sensei', text: string): void {
+  private appendText(role: 'user' | 'Jarvis', text: string): void {
     const open = role === 'user' ? this.openUser : this.openSensei;
     if (open) {
       open.text += text;
@@ -391,7 +391,7 @@ export class SenseiLiveCall {
     else this.openSensei = line;
   }
 
-  private closeLine(role: 'user' | 'sensei'): void {
+  private closeLine(role: 'user' | 'Jarvis'): void {
     const open = role === 'user' ? this.openUser : this.openSensei;
     if (!open) return;
     open.text = open.text.trim();

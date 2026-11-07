@@ -8,7 +8,7 @@ import { normalizeTimeZone } from '@/lib/utils/day';
 import { EVIDENCE_MIN_SCORE, formatSourceDate, toMemorySources } from '@/lib/ai/memorySources';
 
 /**
- * POST /api/sensei/chat
+ * POST /api/Jarvis/chat
  *
  * Body: { threadId?: string, message: string, tz?: string (IANA zone for 'today') }
  *
@@ -73,7 +73,7 @@ export async function POST(request: Request) {
     // ── 4. Parallel: journal memories + execution data (shared builder, user's local day) ──
     const timeZone = normalizeTimeZone(body.tz);
     const [memResults, stats, executionData] = await Promise.all([
-      searchMemories(message, 6).catch((e) => { console.error('[Sensei chat] mem0 search failed:', e); return null; }),
+      searchMemories(message, 6).catch((e) => { console.error('[Jarvis chat] mem0 search failed:', e); return null; }),
       getUserStats(),
       buildExecutionSummary(timeZone),
     ]);
@@ -86,7 +86,7 @@ export async function POST(request: Request) {
 
     // ── 7. Journal memories, dated so the model can cite which entry it used ──
     const safeEntries = memorySources.map((m) => ({ content: `[journal entry ${formatSourceDate(m.date)}] ${m.fact}` }));
-    // What the UI shows as "Sensei remembered" — on-topic facts only, one per entry
+    // What the UI shows as "Jarvis remembered" — on-topic facts only, one per entry
     const sources = memorySources
       .filter((m) => m.score >= EVIDENCE_MIN_SCORE)
       .filter((m, i, all) => all.findIndex((x) => x.entryId === m.entryId) === i);
@@ -115,7 +115,7 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ advice, threadId, executionData, sources });
   } catch (err) {
-    console.error('[POST /api/sensei/chat]', err);
-    return NextResponse.json({ error: 'Failed to generate Sensei response' }, { status: 500 });
+    console.error('[POST /api/Jarvis/chat]', err);
+    return NextResponse.json({ error: 'Failed to generate Jarvis response' }, { status: 500 });
   }
 }

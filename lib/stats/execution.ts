@@ -1,9 +1,9 @@
 /**
- * The execution data Sensei reasons over (chat + advice). One builder so both routes — and the
+ * The execution data Jarvis reasons over (chat + advice). One builder so both routes — and the
  * screens they get compared against — use the same definitions:
  *   tasks.*            → summarizeTasks, same as the Action header and Overview
  *   goals              → enrichGoal, same % and countdown as the goal cards
- *   pomodoros          → focus blocks, explicitly NOT tasks (Sensei used to call "6 of 13
+ *   pomodoros          → focus blocks, explicitly NOT tasks (Jarvis used to call "6 of 13
  *                        pomodoros" "6 of 13 tasks")
  * Each claim-worthy number carries its denominator so the model can cite evidence.
  */

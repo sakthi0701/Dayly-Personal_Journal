@@ -1,7 +1,7 @@
 /**
  * POST /api/voice/token
  *
- * Mints a single-use Gemini Live ephemeral token for a Sensei check-in call.
+ * Mints a single-use Gemini Live ephemeral token for a Jarvis check-in call.
  * The whole session config (persona, live data, tools, voice) is LOCKED into the token,
  * so the phone never sees GEMINI_API_KEY and can't repurpose the token for anything else.
  */
@@ -38,7 +38,7 @@ export async function POST() {
             systemInstruction: buildCallInstruction(context.text, history),
             speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: LIVE_VOICE } } },
             inputAudioTranscription: {},   // subtitles for what the user says
-            outputAudioTranscription: {},  // subtitles for what Sensei says
+            outputAudioTranscription: {},  // subtitles for what Jarvis says
             // Patience: wait longer before treating a pause as "done talking" (see constant)
             realtimeInputConfig: {
               automaticActivityDetection: {

@@ -7,13 +7,18 @@
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
 
-    <!-- Voice journaling + Sensei voice calls -->
+    <!-- Voice journaling + Jarvis voice calls -->
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <!-- REQUIRED for getUserMedia in the WebView: Capacitor's BridgeWebChromeClient requests
          RECORD_AUDIO *and* MODIFY_AUDIO_SETTINGS together and denies the mic unless BOTH are
          granted. Undeclared = always denied → "Microphone permission is needed". Don't remove.
          (Normal permission: auto-granted at install, no user prompt.) -->
     <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
+
+    <!-- Jarvis calls ring on time with the app closed: pre-scheduled alarms use exact timing
+         when the user grants it (Settings → "Exact timing"); otherwise Android fires them late
+         while idle. Android 14 denies this by default, so the in-app button opens the toggle. -->
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM" />
 
     <!-- Push / local streak notifications (Android 13+) -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />

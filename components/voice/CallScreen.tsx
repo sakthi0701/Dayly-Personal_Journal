@@ -53,26 +53,26 @@ function HudOrb({ getLevels, ringing, size = 240 }: { getLevels?: () => Levels; 
       />
       {ringing && (
         <>
-          <div className="sensei-motion absolute inset-[18%] rounded-full border border-cyan-300/50" style={{ animation: 'sensei-ping 2s ease-out infinite' }} />
-          <div className="sensei-motion absolute inset-[18%] rounded-full border border-cyan-300/50" style={{ animation: 'sensei-ping 2s ease-out 1s infinite' }} />
+          <div className="Jarvis-motion absolute inset-[18%] rounded-full border border-cyan-300/50" style={{ animation: 'Jarvis-ping 2s ease-out infinite' }} />
+          <div className="Jarvis-motion absolute inset-[18%] rounded-full border border-cyan-300/50" style={{ animation: 'Jarvis-ping 2s ease-out 1s infinite' }} />
         </>
       )}
       <svg viewBox="0 0 240 240" className="absolute inset-0 w-full h-full">
         <defs>
-          <radialGradient id="sensei-core" cx="50%" cy="50%" r="50%">
+          <radialGradient id="Jarvis-core" cx="50%" cy="50%" r="50%">
             <stop offset="0%" stopColor="#ecfeff" stopOpacity="0.95" />
             <stop offset="35%" stopColor="#67e8f9" stopOpacity="0.8" />
             <stop offset="100%" stopColor="#0891b2" stopOpacity="0" />
           </radialGradient>
         </defs>
         {/* Outer dashed ring */}
-        <g className="sensei-motion" style={{ transformOrigin: '120px 120px', animation: 'sensei-spin 28s linear infinite' }}>
+        <g className="Jarvis-motion" style={{ transformOrigin: '120px 120px', animation: 'Jarvis-spin 28s linear infinite' }}>
           <circle cx="120" cy="120" r="112" fill="none" stroke="rgb(103 232 249 / 0.35)" strokeWidth="1.5" strokeDasharray="2 6" />
           <path d="M120 8 A112 112 0 0 1 199 41" fill="none" stroke="rgb(103 232 249 / 0.8)" strokeWidth="3" strokeLinecap="round" />
           <path d="M120 232 A112 112 0 0 1 41 199" fill="none" stroke="rgb(103 232 249 / 0.8)" strokeWidth="3" strokeLinecap="round" />
         </g>
         {/* Segmented ring, counter-rotating */}
-        <g className="sensei-motion" style={{ transformOrigin: '120px 120px', animation: 'sensei-spin-rev 18s linear infinite' }}>
+        <g className="Jarvis-motion" style={{ transformOrigin: '120px 120px', animation: 'Jarvis-spin-rev 18s linear infinite' }}>
           <circle cx="120" cy="120" r="96" fill="none" stroke="rgb(34 211 238 / 0.5)" strokeWidth="5" strokeDasharray="40 22 8 22" />
         </g>
         {/* Static tick ring */}
@@ -87,8 +87,8 @@ function HudOrb({ getLevels, ringing, size = 240 }: { getLevels?: () => Levels; 
         {/* Mic ring — brightens while you speak */}
         <circle ref={micRef} cx="120" cy="120" r="64" fill="none" stroke="#ffffff" strokeOpacity="0.15" strokeWidth="1.5"
           style={{ transformOrigin: '120px 120px', transition: 'stroke-opacity 80ms' }} />
-        {/* Core — swells while Sensei speaks */}
-        <circle ref={coreRef} cx="120" cy="120" r="44" fill="url(#sensei-core)" style={{ transformOrigin: '120px 120px' }} />
+        {/* Core — swells while Jarvis speaks */}
+        <circle ref={coreRef} cx="120" cy="120" r="44" fill="url(#Jarvis-core)" style={{ transformOrigin: '120px 120px' }} />
       </svg>
     </div>
   );
@@ -154,12 +154,12 @@ function RingView({ onAccept, onDecline, onSnooze, onMissed }: {
 
   return (
     <div className="flex-1 flex flex-col items-center justify-between px-6 py-10">
-      <div className="text-center" style={{ animation: 'sensei-fade-in 0.4s ease-out both' }}>
+      <div className="text-center" style={{ animation: 'Jarvis-fade-in 0.4s ease-out both' }}>
         <p className="flex items-center justify-center gap-2 text-[11px] tracking-[0.35em] text-cyan-300/80 uppercase">
-          <span className="sensei-motion w-1.5 h-1.5 rounded-full bg-cyan-300" style={{ animation: 'sensei-caret 1s steps(1) infinite' }} />
+          <span className="Jarvis-motion w-1.5 h-1.5 rounded-full bg-cyan-300" style={{ animation: 'Jarvis-caret 1s steps(1) infinite' }} />
           Incoming check-in
         </p>
-        <h2 className="mt-4 text-4xl font-bold tracking-[0.2em] text-white">SENSEI</h2>
+        <h2 className="mt-4 text-4xl font-bold tracking-[0.2em] text-white">Jarvis</h2>
         <p className="mt-2 text-sm text-zinc-400">Wants to hear how your day is going</p>
       </div>
 
@@ -203,7 +203,7 @@ function SubtitleLine({ line }: { line: TranscriptLine }) {
   if (line.role === 'action') {
     const Icon = !line.final ? Loader2 : line.ok ? CheckCircle2 : AlertCircle;
     return (
-      <div className="flex justify-center" style={{ animation: 'sensei-fade-in 0.2s ease-out both' }}>
+      <div className="flex justify-center" style={{ animation: 'Jarvis-fade-in 0.2s ease-out both' }}>
         <span className={`inline-flex items-center gap-1.5 max-w-[90%] px-3 py-1.5 rounded-full text-xs border ${
           !line.final ? 'border-cyan-300/30 text-cyan-200 bg-cyan-400/10'
             : line.ok ? 'border-emerald-400/30 text-emerald-200 bg-emerald-400/10'
@@ -216,17 +216,17 @@ function SubtitleLine({ line }: { line: TranscriptLine }) {
     );
   }
 
-  const sensei = line.role === 'sensei';
+  const Jarvis = line.role === 'Jarvis';
   return (
-    <div className={`flex flex-col ${sensei ? 'items-start' : 'items-end text-right'}`} style={{ animation: 'sensei-fade-in 0.2s ease-out both' }}>
-      <span className={`text-[10px] tracking-[0.3em] uppercase mb-1 ${sensei ? 'text-cyan-300/70' : 'text-zinc-500'}`}>
-        {sensei ? 'Sensei' : 'You'}
+    <div className={`flex flex-col ${Jarvis ? 'items-start' : 'items-end text-right'}`} style={{ animation: 'Jarvis-fade-in 0.2s ease-out both' }}>
+      <span className={`text-[10px] tracking-[0.3em] uppercase mb-1 ${Jarvis ? 'text-cyan-300/70' : 'text-zinc-500'}`}>
+        {Jarvis ? 'Jarvis' : 'You'}
       </span>
-      <p className={`text-[17px] leading-snug max-w-[92%] ${sensei ? 'text-cyan-50' : 'text-zinc-100'} ${line.interrupted ? 'opacity-60' : ''}`}>
+      <p className={`text-[17px] leading-snug max-w-[92%] ${Jarvis ? 'text-cyan-50' : 'text-zinc-100'} ${line.interrupted ? 'opacity-60' : ''}`}>
         {line.text}
         {line.interrupted && ' —'}
         {!line.final && (
-          <span className="sensei-motion inline-block w-[2px] h-[1em] ml-0.5 align-[-2px] bg-current" style={{ animation: 'sensei-caret 0.9s steps(1) infinite' }} />
+          <span className="Jarvis-motion inline-block w-[2px] h-[1em] ml-0.5 align-[-2px] bg-current" style={{ animation: 'Jarvis-caret 0.9s steps(1) infinite' }} />
         )}
       </p>
     </div>
@@ -312,12 +312,12 @@ function InCallView({ onFinished }: { onFinished: () => void }) {
       {/* Header */}
       <div className="flex items-center justify-between px-5 pt-5">
         <div>
-          <p className="text-sm font-bold tracking-[0.3em] text-white">SENSEI</p>
+          <p className="text-sm font-bold tracking-[0.3em] text-white">Jarvis</p>
           <p className="text-[11px] text-zinc-500 tabular-nums">{status === 'live' ? fmt(elapsed) : status === 'connecting' ? 'Connecting…' : status === 'error' ? 'Call failed' : 'Call ended'}</p>
         </div>
         {status === 'live' && (
           <span className="flex items-center gap-1.5 px-2.5 py-1 rounded-full border border-cyan-300/30 text-[10px] tracking-[0.25em] text-cyan-200">
-            <span className="sensei-motion w-1.5 h-1.5 rounded-full bg-red-400" style={{ animation: 'sensei-caret 1.2s steps(1) infinite' }} />
+            <span className="Jarvis-motion w-1.5 h-1.5 rounded-full bg-red-400" style={{ animation: 'Jarvis-caret 1.2s steps(1) infinite' }} />
             LIVE
           </span>
         )}
@@ -353,7 +353,7 @@ function InCallView({ onFinished }: { onFinished: () => void }) {
       {/* Controls */}
       <div className="px-6 pb-8 pt-3">
         {done ? (
-          <div className="flex flex-col items-center gap-3" style={{ animation: 'sensei-fade-in 0.25s ease-out both' }}>
+          <div className="flex flex-col items-center gap-3" style={{ animation: 'Jarvis-fade-in 0.25s ease-out both' }}>
             <p className="text-sm text-zinc-400">
               {status === 'ended' ? `Call ended · ${fmt(elapsed)}` : 'Call failed'}
               {actions.length > 0 && ` · ${actions.length} update${actions.length > 1 ? 's' : ''} saved`}
@@ -394,13 +394,13 @@ export default function CallScreen({ phase, onAccept, onDecline, onSnooze, onMis
     <div
       role="dialog"
       aria-modal="true"
-      aria-label="Sensei check-in call"
+      aria-label="Jarvis check-in call"
       className="fixed inset-0 z-[10000] flex flex-col text-white"
       style={{
         background: 'radial-gradient(120% 70% at 50% 25%, #0b2530 0%, #05070d 55%, #020305 100%)',
         paddingTop: 'env(safe-area-inset-top)',
         paddingBottom: 'env(safe-area-inset-bottom)',
-        animation: 'sensei-fade-in 0.3s ease-out both',
+        animation: 'Jarvis-fade-in 0.3s ease-out both',
       }}
     >
       {/* Faint scanline grid for the HUD feel */}

@@ -3,7 +3,7 @@
 /**
  * Route-level error boundary. A crash inside any page now shows this panel inside the normal
  * layout (sidebar stays usable) instead of white-screening the whole app. Added after an
- * unreproduced React #185 on /sensei — keep it even once that root cause is found.
+ * unreproduced React #185 on /Jarvis — keep it even once that root cause is found.
  */
 import { useEffect } from 'react';
 import { AlertTriangle, RotateCcw } from 'lucide-react';

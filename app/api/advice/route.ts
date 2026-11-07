@@ -19,7 +19,7 @@ export async function POST(req: Request) {
       query = 'repeated behavior habits loop stuck same situation';
     } else if (mode === 'Momentum') {
       query = 'progress working improving growth discipline success';
-    } else if (mode === 'Sensei') {
+    } else if (mode === 'Jarvis') {
       query = 'avoidance procrastination goals discipline execution failure';
     } else if (mode === 'Task-Audit') {
       query = 'task avoidance ignore delay incomplete important work';

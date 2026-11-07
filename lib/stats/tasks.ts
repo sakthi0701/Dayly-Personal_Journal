@@ -1,6 +1,6 @@
 /**
  * Shared task counts. Every screen that says "N due today" / "N overdue" / "X of Y done"
- * (Overview, Action header, Sensei chat + advice) must derive it from summarizeTasks with the
+ * (Overview, Action header, Jarvis chat + advice) must derive it from summarizeTasks with the
  * user's local date — previously each screen counted differently and they disagreed.
  */
 import { daysBetween } from '@/lib/utils/day';

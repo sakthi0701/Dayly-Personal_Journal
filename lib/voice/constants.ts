@@ -1,7 +1,7 @@
 /**
  * lib/voice/constants.ts
  *
- * Shared (client + server) constants for the Sensei voice check-in call.
+ * Shared (client + server) constants for the Jarvis voice check-in call.
  * Pure data only — no server imports, safe to bundle in the browser.
  */
 
@@ -19,7 +19,7 @@ export const LIVE_API_VERSION = 'v1alpha';
 export const LIVE_VOICE = 'Charon';
 
 /**
- * Agent tools Sensei may use on a call. Timer + read_journal tools are Telegram-only on purpose.
+ * Agent tools Jarvis may use on a call. Timer + read_journal tools are Telegram-only on purpose.
  * log_journal is NOT run by executeTools (it only echoes content) — /api/voice/tool saves it itself.
  */
 export const VOICE_AGENT_TOOLS = [
@@ -36,12 +36,12 @@ export const VOICE_AGENT_TOOLS = [
   'update_goal',
 ] as const;
 
-/** Voice-only tool: lets Sensei hang up after saying goodbye. Handled on the client. */
+/** Voice-only tool: lets Jarvis hang up after saying goodbye. Handled on the client. */
 export const END_CALL_TOOL = 'end_call';
 
 /**
  * Silence Gemini waits for before deciding you've finished speaking. Raised on user request:
- * at the default, Sensei kept cutting in while they paused to find the next English word.
+ * at the default, Jarvis kept cutting in while they paused to find the next English word.
  * Higher = more patience but a slower reply after every turn. Don't lower without asking.
  */
 export const END_OF_SPEECH_SILENCE_MS = 1500;

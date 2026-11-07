@@ -30,7 +30,7 @@ const NAV_ITEMS = [
   { href: '/action',  icon: Swords,          label: 'Action'   },
   { href: '/focus',   icon: Timer,           label: 'Focus'    },
   { href: '/entries', icon: BookOpen,        label: 'Journal'  },
-  { href: '/sensei',  icon: Brain,           label: 'Sensei'   },
+  { href: '/Jarvis',  icon: Brain,           label: 'Jarvis'   },
   { href: '/settings', icon: Settings,       label: 'Settings' },
 ];
 

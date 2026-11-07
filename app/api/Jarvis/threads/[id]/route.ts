@@ -7,7 +7,7 @@ interface RouteContext {
   params: Promise<{ id: string }>;
 }
 
-// GET /api/sensei/threads/[id] — get thread with messages
+// GET /api/Jarvis/threads/[id] — get thread with messages
 export async function GET(_request: Request, { params }: RouteContext) {
   try {
     const { id } = await params;
@@ -28,12 +28,12 @@ export async function GET(_request: Request, { params }: RouteContext) {
       messages: messagesRes.data ?? [],
     });
   } catch (err) {
-    console.error('[GET /api/sensei/threads/[id]]', err);
+    console.error('[GET /api/Jarvis/threads/[id]]', err);
     return NextResponse.json({ error: 'Failed to fetch thread' }, { status: 500 });
   }
 }
 
-// DELETE /api/sensei/threads/[id]
+// DELETE /api/Jarvis/threads/[id]
 export async function DELETE(_request: Request, { params }: RouteContext) {
   try {
     const { id } = await params;
@@ -43,7 +43,7 @@ export async function DELETE(_request: Request, { params }: RouteContext) {
 
     return NextResponse.json({ success: true });
   } catch (err) {
-    console.error('[DELETE /api/sensei/threads/[id]]', err);
+    console.error('[DELETE /api/Jarvis/threads/[id]]', err);
     return NextResponse.json({ error: 'Failed to delete thread' }, { status: 500 });
   }
 }

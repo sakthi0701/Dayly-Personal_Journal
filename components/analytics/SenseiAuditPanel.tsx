@@ -17,9 +17,9 @@ export default function SenseiAuditPanel() {
   const [advice, setAdvice] = useState<string | null>(null);
   const [executionData, setExecutionData] = useState<ExecutionData | null>(null);
   const [loading, setLoading] = useState(false);
-  const [mode, setMode] = useState<'Sensei' | 'Task-Audit'>('Sensei');
+  const [mode, setMode] = useState<'Jarvis' | 'Task-Audit'>('Jarvis');
 
-  const runAudit = async (auditMode: 'Sensei' | 'Task-Audit' = mode) => {
+  const runAudit = async (auditMode: 'Jarvis' | 'Task-Audit' = mode) => {
     setLoading(true);
     setAdvice(null);
     setExecutionData(null);
@@ -55,7 +55,7 @@ export default function SenseiAuditPanel() {
         <div>
           <div className="flex items-center gap-2 mb-1">
             <Brain className="w-5 h-5 text-violet-400" />
-            <h2 className="text-sm font-semibold text-white">Sensei Audit</h2>
+            <h2 className="text-sm font-semibold text-white">Jarvis Audit</h2>
           </div>
           <p className="text-xs text-zinc-500 max-w-md">
             A ruthless 7-day autopsy: where your time actually went vs. where you said you wanted to go.
@@ -74,7 +74,7 @@ export default function SenseiAuditPanel() {
 
       {/* Mode tabs */}
       <div className="flex gap-2">
-        {(['Sensei', 'Task-Audit'] as const).map((m) => (
+        {(['Jarvis', 'Task-Audit'] as const).map((m) => (
           <button
             key={m}
             onClick={() => setMode(m)}
@@ -84,7 +84,7 @@ export default function SenseiAuditPanel() {
                 : 'bg-zinc-950 border-zinc-800 text-zinc-500 hover:text-zinc-300 hover:border-zinc-700'
             }`}
           >
-            {m === 'Sensei' ? '🧠 Holistic Autopsy' : '🎯 Task Alignment Audit'}
+            {m === 'Jarvis' ? '🧠 Holistic Autopsy' : '🎯 Task Alignment Audit'}
           </button>
         ))}
       </div>
@@ -139,7 +139,7 @@ export default function SenseiAuditPanel() {
             {/* AI Verdict */}
             <div className="p-5 bg-zinc-950/70 rounded-xl border border-zinc-800/80 shadow-inner">
               <div className="flex items-center gap-2 mb-3">
-                <span className="text-[10px] text-violet-400 uppercase tracking-widest font-bold">The Sensei</span>
+                <span className="text-[10px] text-violet-400 uppercase tracking-widest font-bold">The Jarvis</span>
               </div>
               <p className="whitespace-pre-wrap font-serif text-sm leading-relaxed text-zinc-300">
                 {advice}

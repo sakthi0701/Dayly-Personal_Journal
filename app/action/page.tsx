@@ -335,7 +335,7 @@ function ActionPageInner() {
                 </div>
                 <h3 className="text-base font-semibold text-zinc-400 mb-1">No tasks yet</h3>
                 <p className="text-sm text-zinc-600 max-w-xs mb-5">
-                  Break your goals into tasks. Link them to an active goal to let the Sensei track alignment.
+                  Break your goals into tasks. Link them to an active goal to let the Jarvis track alignment.
                 </p>
                 <button
                   onClick={() => { setFormParentId(null); setShowForm(true); }}

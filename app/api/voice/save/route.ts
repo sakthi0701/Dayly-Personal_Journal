@@ -1,7 +1,7 @@
 /**
  * POST /api/voice/save
  *
- * Body: { durationSec: number, lines: { role: 'user' | 'sensei' | 'action', text: string }[] }
+ * Body: { durationSec: number, lines: { role: 'user' | 'Jarvis' | 'action', text: string }[] }
  *
  * Stores ONE condensed recap of the call in telegram_messages, so the next Telegram
  * check-in can follow up on what was promised on the call.
@@ -20,7 +20,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ saved: false });
   }
 
-  const label = { user: 'Them', sensei: 'You', action: 'Done' } as Record<string, string>;
+  const label = { user: 'Them', Jarvis: 'You', action: 'Done' } as Record<string, string>;
   const body = lines
     .filter((l) => typeof l?.text === 'string' && l.text.trim() && label[l.role])
     .map((l) => `${label[l.role]}: ${l.text.trim()}`)

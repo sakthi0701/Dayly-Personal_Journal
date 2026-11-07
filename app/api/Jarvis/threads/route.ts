@@ -3,7 +3,7 @@ import { supabase } from '@/lib/supabase';
 
 export const dynamic = 'force-dynamic';
 
-// GET /api/sensei/threads — list all threads newest first
+// GET /api/Jarvis/threads — list all threads newest first
 export async function GET() {
   try {
     const { data: threads, error } = await supabase
@@ -15,12 +15,12 @@ export async function GET() {
 
     return NextResponse.json({ threads: threads ?? [] });
   } catch (err) {
-    console.error('[GET /api/sensei/threads]', err);
+    console.error('[GET /api/Jarvis/threads]', err);
     return NextResponse.json({ error: 'Failed to fetch threads' }, { status: 500 });
   }
 }
 
-// POST /api/sensei/threads — create a new thread
+// POST /api/Jarvis/threads — create a new thread
 export async function POST(request: Request) {
   try {
     const body = await request.json();
@@ -36,7 +36,7 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ thread }, { status: 201 });
   } catch (err) {
-    console.error('[POST /api/sensei/threads]', err);
+    console.error('[POST /api/Jarvis/threads]', err);
     return NextResponse.json({ error: 'Failed to create thread' }, { status: 500 });
   }
 }
